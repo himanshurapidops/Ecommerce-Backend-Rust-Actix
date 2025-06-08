@@ -1,0 +1,33 @@
+[package]
+name = "task-web-actix"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix-web = "4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = {version = "1.17.0", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.11.8"
+futures = "0.3.31"
+dotenvy = "0.15.7"
+sqlx = { version = "0.8.6", features = ["postgres","runtime-tokio-rustls", "postgres", "macros", "uuid", "chrono"] }
+actix-cors = "0.7.1"
+scylla = "1.2.0"
+jsonwebtoken = "9.3.1"
+tokio = { version = "1.45.1", features = ["full"] }
+cdrs-tokio = "8.1.7"
+bcrypt = "0.17.0"
+chrono = { version = "0.4.26", features = ["serde"] }
+futures-util = "0.3.31"
+actix-web-httpauth = "0.8.2"
+rdkafka = "0.37.0"
+thiserror = "2.0.12"
+validator = { version = "0.20", features = ["derive"] }
+anyhow = "1.0.98"
+derive_more = "2.0.1"
+bigdecimal = { version = "0.4", features = ["serde"] }
+rand = "0.9.1"
+hmac = "0.12.1"
+async-stripe = { version = "0.41.0", features = ["runtime-tokio-hyper"] }
