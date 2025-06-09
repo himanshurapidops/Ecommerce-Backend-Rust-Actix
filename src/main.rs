@@ -21,6 +21,7 @@ mod routes {
     pub mod product;
     pub mod cart;
     pub mod order;
+    pub mod address;
 }
 mod utils {
     pub mod password;
@@ -33,7 +34,7 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
     let db_pool = init_db(&config).await;
 
-    log::info!("Starting server at http://127.0.0.1:8080");
+    log::info!("Starting server at http://127.0.0.1:4000");
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -46,12 +47,23 @@ async fn main() -> std::io::Result<()> {
 
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
-            .service(web::scope("/auth").configure(routes::auth::init))
-            .service(web::scope("/api").wrap(jwt_auth::JwtMiddleware).configure(routes::user::init))
-            .service(web::scope("/products").configure(routes::product::init))
-            .service(web::scope("/cart").configure(routes::cart::init))
-            .service(web::scope("/orders").configure(routes::order::init))
-
+            .service(
+                web::scope("/api").service(
+                    web
+                        ::scope("/v1")
+                        .service(web::scope("/auth").configure(routes::auth::init))
+                        .service(
+                            web
+                                ::scope("/user")
+                                .wrap(jwt_auth::JwtMiddleware)
+                                .configure(routes::user::init)
+                        )
+                        .service(web::scope("/products").configure(routes::product::init))
+                        .service(web::scope("/cart").configure(routes::cart::init))
+                        .service(web::scope("/addresses").configure(routes::address::init))
+                    // .service(web::scope("/orders").configure(routes::order::init))
+                )
+            )
     })
         .bind(("127.0.0.1", env::var("PORT").unwrap_or("4000".to_string()).parse().unwrap()))?
         .workers(1)
