@@ -6,8 +6,7 @@ mod middleware;
 mod responses;
 mod email;
 mod reports;
-use std::{ env, sync::Arc };
-use middleware::{ jwt_auth, is_admin };
+use std::{ sync::Arc };
 use reports::schedule_report_tasks;
 use actix_web::{ http::header, web, App, HttpServer };
 use actix_cors::Cors;
@@ -64,12 +63,7 @@ async fn main() -> std::io::Result<()> {
                         web
                             ::scope("/v1")
                             .service(web::scope("/auth").configure(routes::auth::init))
-                            .service(
-                                web
-                                    ::scope("/user")
-                                    .wrap(jwt_auth::JwtMiddleware)
-                                    .configure(routes::user::init)
-                            )
+                            .service(web::scope("/user").configure(routes::user::init))
                             .service(web::scope("/products").configure(routes::product::init))
                             .service(web::scope("/cart").configure(routes::cart::init))
                             .service(web::scope("/addresses").configure(routes::address::init))
@@ -77,7 +71,7 @@ async fn main() -> std::io::Result<()> {
                     )
             )
     })
-        .bind(("127.0.0.1", env::var("PORT").unwrap_or("4000".to_string()).parse().unwrap()))?
+        .bind(("127.0.0.1", config.port))?
         .workers(1)
         .run().await
 }

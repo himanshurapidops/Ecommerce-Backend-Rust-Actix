@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::Arc;
 use chrono::{ NaiveDateTime, Utc, Duration };
 use lettre::{ Message, SmtpTransport, Transport };
@@ -6,6 +5,8 @@ use lettre::transport::smtp::authentication::Credentials;
 use serde::Serialize;
 use sqlx::{ PgPool, FromRow };
 use tokio_cron_scheduler::{ Job, JobScheduler };
+
+use crate::config::Config;
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct SalesReport {
@@ -51,8 +52,8 @@ pub fn get_date_range(period: &str) -> (NaiveDateTime, NaiveDateTime) {
 
 pub async fn send_email(report: &SalesReport) -> Result<(), Box<dyn std::error::Error>> {
     let email = Message::builder()
-        .from(env::var("EMAIL_FROM")?.parse()?)
-        .to(env::var("EMAIL_TO")?.parse()?)
+        .from(Config::from_env().email_from.parse()?)
+        .to(Config::from_env().email_to.parse()?)
         .subject("Sales Report")
         .body(
             format!(
@@ -62,7 +63,11 @@ pub async fn send_email(report: &SalesReport) -> Result<(), Box<dyn std::error::
             )
         )?;
 
-    let creds = Credentials::new(env::var("SMTP_USERNAME")?, env::var("SMTP_PASSWORD")?);
+    let creds = Credentials::new(
+        Config::from_env().smtp_username,
+        Config::from_env().smtp_password
+    );
+
     let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
     mailer.send(&email)?;
     Ok(())

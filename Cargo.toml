@@ -31,3 +31,5 @@ hmac = "0.12.1"
 lettre = { version = "0.11.17", features = [ "smtp-transport", "builder"] }
 bigdecimal = "0.4.8"
 tokio-cron-scheduler = "0.14.0"
+async-nats = "0.41.0"
+

@@ -1,6 +1,12 @@
-use lettre::{ transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport };
-use std::env;
+use lettre::{
+    transport::smtp::{  authentication::Credentials },
+    Message,
+    SmtpTransport,
+    Transport,
+};
+
 use dotenvy::dotenv;
+use crate::config::Config;
 
 pub async fn send_email(
     to: &str,
@@ -10,12 +16,11 @@ pub async fn send_email(
 ) -> Result<(), String> {
     dotenv().ok(); // Load .env
 
-    let smtp_user = env::var("SMTP_USERNAME").map_err(|_| "SMTP_USERNAME missing")?;
-    let smtp_pass = env::var("SMTP_PASSWORD").map_err(|_| "SMTP_PASSWORD missing")?;
-    println!("{}:{}", smtp_user, smtp_pass);
-    let smtp_host = env::var("SMTP_SERVER").unwrap_or_else(|_| "smtp.gmail.com".to_string());
-    let smtp_port = env::var("SMTP_PORT").unwrap_or_else(|_| "587".to_string());
-    let email_from = env::var("EMAIL_FROM").unwrap_or(smtp_user.clone());
+    let smtp_user = Config::from_env().smtp_username.clone();
+    let smtp_pass = Config::from_env().smtp_password.clone();
+    let smtp_host = Config::from_env().smtp_server.clone();
+    let smtp_port = Config::from_env().smtp_port.clone();
+    let email_from = Config::from_env().email_from.clone();
 
     // Compose email
     let email = Message::builder()
@@ -34,7 +39,7 @@ pub async fn send_email(
     let creds = Credentials::new(smtp_user, smtp_pass);
     let mailer = SmtpTransport::starttls_relay(&smtp_host)
         .map_err(|e| format!("SMTP STARTTLS error: {}", e))?
-        .port(smtp_port.parse().unwrap_or(587))
+        .port(smtp_port)
         .credentials(creds)
         .build();
 
@@ -59,8 +64,8 @@ pub async fn send_order_confirmation_email(
     address_id: &Uuid,
     total_amount: &f64
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let from_email = env::var("EMAIL_FROM")?;
-    let to_email = env::var("EMAIL_TO")?;
+    let from_email = Config::from_env().email_from.clone();
+    let to_email = Config::from_env().email_to.clone();
 
     let body = format!(
         "🛒 Order Confirmation\n\n\
@@ -85,7 +90,10 @@ pub async fn send_order_confirmation_email(
         .subject("✅ Order Confirmation")
         .body(body)?;
 
-    let creds = Credentials::new(env::var("SMTP_USERNAME")?, env::var("SMTP_PASSWORD")?);
+    let creds = Credentials::new(
+        Config::from_env().smtp_username,
+        Config::from_env().smtp_password
+    );
 
     let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
 
@@ -99,8 +107,8 @@ pub async fn send_low_stock_email(
     count_in_stock: i64
 ) -> Result<(), Box<dyn std::error::Error>> {
     let email = Message::builder()
-        .from(env::var("EMAIL_FROM")?.parse()?)
-        .to(env::var("EMAIL_TO")?.parse()?)
+        .from(Config::from_env().email_from.parse()?)
+        .to(Config::from_env().email_to.parse()?)
         .subject("⚠️ Low Stock Alert")
         .body(
             format!(
@@ -111,7 +119,10 @@ pub async fn send_low_stock_email(
         )?;
 
     println!("Sending email stock alert...");
-    let creds = Credentials::new(env::var("SMTP_USERNAME")?, env::var("SMTP_PASSWORD")?);
+    let creds = Credentials::new(
+        Config::from_env().smtp_username.clone(),
+        Config::from_env().smtp_password.clone()
+    );
 
     let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
 

@@ -1,8 +1,10 @@
 use actix_web::{ HttpResponse, web, Result };
 use sqlx::PgPool;
 use uuid::Uuid;
-
+use crate::handlers::address;
 use crate::models::address::{ Address, CreateAddressRequest, UpdateAddressRequest };
+use crate::errors::AppError;
+use crate::responses::ApiResponse;
 
 // Combined handlers with inline queries
 pub async fn create_address(
@@ -38,7 +40,10 @@ pub async fn create_address(
     }
 }
 
-pub async fn get_address(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Result<HttpResponse> {
+pub async fn get_address(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>
+) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
 
     match
@@ -47,19 +52,16 @@ pub async fn get_address(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> Resu
             .bind(id)
             .fetch_optional(pool.as_ref()).await
     {
-        Ok(Some(address)) => Ok(HttpResponse::Ok().json(address)),
-        Ok(None) => Ok(HttpResponse::NotFound().json("Address not found")),
-        Err(e) => {
-            eprintln!("Error fetching address: {}", e);
-            Ok(HttpResponse::InternalServerError().json("Failed to fetch address"))
-        }
+        Ok(Some(address)) => Ok(ApiResponse::ok("Address found", address)),
+        Ok(None) => Ok(ApiResponse::ok("Address not found", "")),
+        Err(e) => Err(AppError::AddressError(e.to_string())),
     }
 }
 
 pub async fn get_user_addresses(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, AppError> {
     let user_id = path.into_inner();
 
     match
@@ -70,11 +72,8 @@ pub async fn get_user_addresses(
             .bind(user_id)
             .fetch_all(pool.as_ref()).await
     {
-        Ok(addresses) => Ok(HttpResponse::Ok().json(addresses)),
-        Err(e) => {
-            eprintln!("Error fetching user addresses: {}", e);
-            Ok(HttpResponse::InternalServerError().json("Failed to fetch addresses"))
-        }
+        Ok(addresses) => Ok(ApiResponse::ok("Addresses found", addresses)),
+        Err(e) => Err(AppError::AddressError(e.to_string())),
     }
 }
 
@@ -82,7 +81,7 @@ pub async fn update_address(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
     req: web::Json<UpdateAddressRequest>
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
     let req = req.into_inner();
 
@@ -112,47 +111,44 @@ pub async fn update_address(
             .bind(req.selected)
             .fetch_optional(pool.as_ref()).await
     {
-        Ok(Some(address)) => Ok(HttpResponse::Ok().json(address)),
-        Ok(None) => Ok(HttpResponse::NotFound().json("Address not found")),
-        Err(e) => {
-            eprintln!("Error updating address: {}", e);
-            Ok(HttpResponse::InternalServerError().json("Failed to update address"))
-        }
+        Ok(Some(address)) => Ok(ApiResponse::ok("Address updated", address)),
+        Ok(None) => Ok(ApiResponse::ok("Address not found", "")),
+        Err(e) => Err(AppError::AddressError(e.to_string())),
     }
 }
 
 pub async fn delete_address(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
 
     match sqlx::query("DELETE FROM addresses WHERE id = $1").bind(id).execute(pool.as_ref()).await {
-        Ok(result) if result.rows_affected() > 0 => Ok(HttpResponse::NoContent().finish()),
-        Ok(_) => Ok(HttpResponse::NotFound().json("Address not found")),
-        Err(e) => {
-            eprintln!("Error deleting address: {}", e);
-            Ok(HttpResponse::InternalServerError().json("Failed to delete address"))
-        }
+        Ok(result) if result.rows_affected() > 0 => { Ok(ApiResponse::ok("Address deleted", ())) }
+        Ok(_) => { Ok(ApiResponse::ok("Address not found", ())) }
+        Err(e) => Err(AppError::AddressError(e.to_string())),
     }
 }
 
-// Bonus: Set selected address handler (with transaction)
 pub async fn set_selected_address(
     pool: web::Data<PgPool>,
     path: web::Path<(Uuid, Uuid)>
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, AppError> {
     let (user_id, address_id) = path.into_inner();
 
     let mut tx = match pool.begin().await {
+        // Ok(tx) => tx,
+        // Err(e) => {
+        //     eprintln!("Error starting transaction: {}", e);
+        //     return Ok(HttpResponse::InternalServerError().json("Failed to start transaction"));
+        // }
+
         Ok(tx) => tx,
         Err(e) => {
-            eprintln!("Error starting transaction: {}", e);
-            return Ok(HttpResponse::InternalServerError().json("Failed to start transaction"));
+            return Err(AppError::AddressError(e.to_string()));
         }
     };
 
-    // Unselect all addresses for the user
     if
         let Err(e) = sqlx
             ::query("UPDATE addresses SET selected = false WHERE user_id = $1")
@@ -160,10 +156,10 @@ pub async fn set_selected_address(
             .execute(&mut *tx).await
     {
         eprintln!("Error unselecting addresses: {}", e);
-        return Ok(HttpResponse::InternalServerError().json("Failed to update addresses"));
+
+        return Err(AppError::AddressError(e.to_string()));
     }
 
-    // Select the specified address
     match
         sqlx
             ::query_as::<_, Address>(
@@ -175,20 +171,19 @@ pub async fn set_selected_address(
     {
         Ok(Some(address)) => {
             if let Err(e) = tx.commit().await {
-                eprintln!("Error committing transaction: {}", e);
-                Ok(HttpResponse::InternalServerError().json("Failed to commit changes"))
+                Err(AppError::AddressError(e.to_string()))
             } else {
-                Ok(HttpResponse::Ok().json(address))
+                Ok(ApiResponse::ok("Address selected", address))
             }
         }
         Ok(None) => {
             let _ = tx.rollback().await;
-            Ok(HttpResponse::NotFound().json("Address not found"))
+            Ok(ApiResponse::ok("Address not found", ""))
         }
         Err(e) => {
             eprintln!("Error setting selected address: {}", e);
             let _ = tx.rollback().await;
-            Ok(HttpResponse::InternalServerError().json("Failed to set selected address"))
+            Err(AppError::AddressError(e.to_string()))
         }
     }
 }

@@ -110,13 +110,13 @@ pub async fn get_cart(pool: web::Data<PgPool>) -> Result<impl Responder, AppErro
             AppError::DbError("Failed to fetch cart items".into())
         })?;
 
-    Ok(HttpResponse::Ok().json(cart_items))
+    Ok(ApiResponse::ok("Cart fetched successfully", cart_items))
 }
 
 pub async fn remove_from_cart(
     pool: web::Data<PgPool>,
     cart_item_id: web::Path<Uuid>
-) -> impl Responder {
+) -> Result<HttpResponse, AppError> {
     let cart_item_id = cart_item_id.into_inner();
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
     let result = sqlx
@@ -126,12 +126,12 @@ pub async fn remove_from_cart(
         .execute(pool.get_ref()).await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().body("Item removed from cart successfully"),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(_) => Ok(ApiResponse::ok("Item removed from cart successfully", ())),
+        Err(e) => Err(AppError::DbError(e.to_string())),
     }
 }
 
-pub async fn clear_cart(pool: web::Data<PgPool>) -> impl Responder {
+pub async fn clear_cart(pool: web::Data<PgPool>) -> Result<HttpResponse, AppError> {
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
 
     println!("User ID: {:?}", user_id);
@@ -146,7 +146,7 @@ pub async fn clear_cart(pool: web::Data<PgPool>) -> impl Responder {
         });
 
     match result {
-        Ok(_) => HttpResponse::Ok().body("Cart cleared successfully"),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(_) => Ok(ApiResponse::ok("Cart cleared successfully", ())),
+        Err(e) => Err(AppError::DbError(e.to_string())),
     }
 }

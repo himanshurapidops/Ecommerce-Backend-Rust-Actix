@@ -3,24 +3,25 @@ use serde::{ Deserialize, Serialize };
 use sqlx::{ PgPool, Postgres, Row, Transaction };
 use uuid::Uuid;
 
-use crate::email::{ send_low_stock_email, send_order_confirmation_email };
-
-#[derive(Deserialize)]
-pub struct CreateOrderRequest {
-    pub address_id: Uuid,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateOrderStatusRequest {
-    pub order_status: String,
-    pub payment_status: Option<String>,
-}
+use crate::{
+    email::{ send_low_stock_email, send_order_confirmation_email },
+    errors::AppError,
+    models::order::{
+        CreateOrderRequest,
+        Order,
+        OrderItem,
+        OrderResponse,
+        OrderStatusResponse,
+        UpdateOrderStatusRequest,
+    },
+    responses::ApiResponse,
+};
 
 pub async fn create_order(
     pool: web::Data<PgPool>,
     // user_id: web::ReqData<Uuid>, // injected from auth middleware
     payload: web::Json<CreateOrderRequest>
-) -> impl Responder {
+) -> Result<HttpResponse, AppError> {
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
     let address_id = payload.address_id;
 
@@ -34,21 +35,12 @@ pub async fn create_order(
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
         Err(e) => {
-            eprintln!("Database error checking address: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Database error"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
     if !address_exists {
-        return HttpResponse::NotFound().json(
-            serde_json::json!({
-            "error": "Address not found or does not belong to user"
-        })
-        );
+        return Err(AppError::BadRequest("Address does not belong to user".into()));
     }
 
     // Fetch cart items with product info
@@ -65,19 +57,10 @@ pub async fn create_order(
     {
         Ok(items) if !items.is_empty() => items,
         Ok(_) => {
-            return HttpResponse::BadRequest().json(
-                serde_json::json!({
-                "error": "Cart is empty"
-            })
-            );
+            return Err(AppError::BadRequest("Cart is empty".into()));
         }
         Err(e) => {
-            eprintln!("Database error fetching cart items: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to fetch cart items"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -88,33 +71,21 @@ pub async fn create_order(
         let count_in_stock: i64 = match item.try_get("count_in_stock") {
             Ok(stock) => stock,
             Err(_) => {
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid stock data"
-                })
-                );
+                return Err(AppError::DbError("Invalid stock data".into()));
             }
         };
 
         let quantity: i64 = match item.try_get("quantity") {
             Ok(qty) => qty,
             Err(_) => {
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid quantity data"
-                })
-                );
+                return Err(AppError::DbError("Invalid quantity data".into()));
             }
         };
 
         let price: f64 = match item.try_get("price") {
             Ok(p) => p,
             Err(_) => {
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid price data"
-                })
-                );
+                return Err(AppError::DbError("Invalid price data".into()));
             }
         };
 
@@ -132,11 +103,10 @@ pub async fn create_order(
 
         if count_in_stock < quantity {
             // Send email
-            return HttpResponse::BadRequest().json(
-                serde_json::json!({
-                "error": format!("Insufficient stock for product '{}'. Available: {}, Requested: {}", name, count_in_stock, quantity)
-            })
-            );
+            if let Err(e) = send_low_stock_email(&name, count_in_stock).await {
+                eprintln!("Failed to send low stock email: {}", e);
+            }
+            return Err(AppError::BadRequest("Insufficient stock".into()));
         }
 
         total_amount += price * (quantity as f64);
@@ -149,12 +119,7 @@ pub async fn create_order(
     let mut tx: Transaction<'_, Postgres> = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("Failed to start transaction: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to start database transaction"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -179,15 +144,11 @@ pub async fn create_order(
     {
         Ok(row) => row,
         Err(e) => {
-            eprintln!("Failed to create order: {}", e);
             if let Err(rollback_err) = tx.rollback().await {
                 eprintln!("Failed to rollback transaction: {}", rollback_err);
             }
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to create order"
-            })
-            );
+
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -199,11 +160,7 @@ pub async fn create_order(
             if let Err(rollback_err) = tx.rollback().await {
                 eprintln!("Failed to rollback transaction: {}", rollback_err);
             }
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to retrieve order ID"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -216,11 +173,7 @@ pub async fn create_order(
                 if let Err(rollback_err) = tx.rollback().await {
                     eprintln!("Failed to rollback transaction: {}", rollback_err);
                 }
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid product data"
-                })
-                );
+                return Err(AppError::DbError(e.to_string()));
             }
         };
 
@@ -231,11 +184,7 @@ pub async fn create_order(
                 if let Err(rollback_err) = tx.rollback().await {
                     eprintln!("Failed to rollback transaction: {}", rollback_err);
                 }
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid quantity data"
-                })
-                );
+                return Err(AppError::DbError(e.to_string()));
             }
         };
 
@@ -246,11 +195,7 @@ pub async fn create_order(
                 if let Err(rollback_err) = tx.rollback().await {
                     eprintln!("Failed to rollback transaction: {}", rollback_err);
                 }
-                return HttpResponse::InternalServerError().json(
-                    serde_json::json!({
-                    "error": "Invalid price data"
-                })
-                );
+                return Err(AppError::DbError(e.to_string()));
             }
         };
 
@@ -271,11 +216,7 @@ pub async fn create_order(
             if let Err(rollback_err) = tx.rollback().await {
                 eprintln!("Failed to rollback transaction: {}", rollback_err);
             }
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to add order items"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     }
 
@@ -295,11 +236,7 @@ pub async fn create_order(
             if let Err(rollback_err) = tx.rollback().await {
                 eprintln!("Failed to rollback transaction: {}", rollback_err);
             }
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to update product stock"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     }
 
@@ -314,21 +251,13 @@ pub async fn create_order(
         if let Err(rollback_err) = tx.rollback().await {
             eprintln!("Failed to rollback transaction: {}", rollback_err);
         }
-        return HttpResponse::InternalServerError().json(
-            serde_json::json!({
-            "error": "Failed to clear cart"
-        })
-        );
+        return Err(AppError::DbError(e.to_string()));
     }
 
     // Commit transaction
     if let Err(e) = tx.commit().await {
         eprintln!("Failed to commit transaction: {}", e);
-        return HttpResponse::InternalServerError().json(
-            serde_json::json!({
-            "error": "Failed to complete order"
-        })
-        );
+        return Err(AppError::DbError(e.to_string()));
     }
 
     // Send order confirmation email
@@ -341,20 +270,15 @@ pub async fn create_order(
         ).await
     {
         eprintln!("Failed to send order confirmation email: {}", e);
-        return HttpResponse::InternalServerError().json(
-            serde_json::json!({
-            "error": "Failed to send order confirmation email"
-        })
-        );
+        return Err(AppError::Email(e.to_string()));
     }
 
-    HttpResponse::Created().json(
-        serde_json::json!({
-        "message": "Order placed successfully",
-        "order_id": order_id,
-        "total_amount": total_amount,
-    })
-    )
+    let order_response = OrderResponse {
+        order_id: order_id.clone(),
+        total_amount: total_amount,
+    };
+
+    Ok(ApiResponse::ok("Order placed successfully", order_response))
 }
 
 pub async fn update_order_status(
@@ -362,7 +286,7 @@ pub async fn update_order_status(
     // user_id: web::ReqData<Uuid>, // injected from auth middleware
     path: web::Path<String>,
     payload: web::Json<UpdateOrderStatusRequest>
-) -> impl Responder {
+) -> Result<HttpResponse, AppError> {
     // let user_id = user_id.into_inner();
     let order_id = path.into_inner();
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
@@ -373,10 +297,13 @@ pub async fn update_order_status(
     // Validate order status
     let valid_order_statuses = ["Processing", "Shipped", "Delivered", "Cancelled", "Returned"];
     if !valid_order_statuses.contains(&new_status.as_str()) {
-        return HttpResponse::BadRequest().json(
-            serde_json::json!({
-            "error": format!("Invalid order status. Valid statuses are: {}", valid_order_statuses.join(", "))
-        })
+        return Err(
+            AppError::BadRequest(
+                format!(
+                    "Invalid order status. Valid statuses are: {}",
+                    valid_order_statuses.join(", ")
+                )
+            )
         );
     }
 
@@ -384,10 +311,13 @@ pub async fn update_order_status(
     if let Some(payment_status) = payment_status {
         let valid_payment_statuses = ["Pending", "Completed", "Failed", "Refunded"];
         if !valid_payment_statuses.contains(&payment_status.as_str()) {
-            return HttpResponse::BadRequest().json(
-                serde_json::json!({
-                "error": format!("Invalid payment status. Valid statuses are: {}", valid_payment_statuses.join(", "))
-            })
+            return Err(
+                AppError::BadRequest(
+                    format!(
+                        "Invalid payment status. Valid statuses are: {}",
+                        valid_payment_statuses.join(", ")
+                    )
+                )
             );
         }
     }
@@ -402,21 +332,12 @@ pub async fn update_order_status(
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
         Err(e) => {
-            eprintln!("Database error checking order: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Database error"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
     if !order_exists {
-        return HttpResponse::NotFound().json(
-            serde_json::json!({
-            "error": "Order not found or does not belong to user"
-        })
-        );
+        return Err(AppError::NotFound("Order not found".to_string()));
     }
 
     // Get current order status to validate transitions
@@ -432,11 +353,7 @@ pub async fn update_order_status(
         Ok(row) => row,
         Err(e) => {
             eprintln!("Database error fetching order details: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to fetch order details"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -444,21 +361,13 @@ pub async fn update_order_status(
         Ok(status) => status,
         Err(e) => {
             eprintln!("Failed to get current order status: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Invalid order data"
-            })
-            );
+            return Err(AppError::BadRequest("Failed to get current order status".to_string()));
         }
     };
 
     // Validate status transitions (prevent invalid transitions)
     if !is_valid_status_transition(&current_status, new_status) {
-        return HttpResponse::BadRequest().json(
-            serde_json::json!({
-            "error": format!("Invalid status transition from '{}' to '{}'", current_status, new_status)
-        })
-        );
+        return Err(AppError::BadRequest("Invalid status transition".to_string()));
     }
 
     // Update order status
@@ -486,55 +395,41 @@ pub async fn update_order_status(
     match update_query.execute(pool.get_ref()).await {
         Ok(result) => {
             if result.rows_affected() == 0 {
-                return HttpResponse::NotFound().json(
-                    serde_json::json!({
-                    "error": "Order not found or already updated"
-                })
-                );
+                return Err(AppError::NotFound("Order not found".to_string()));
             }
         }
         Err(e) => {
-            eprintln!("Failed to update order status: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to update order status"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     }
 
-    // If order is cancelled, restore product stock
     if new_status == "Cancelled" {
         if let Err(e) = restore_product_stock(&pool, &order_id).await {
-            eprintln!("Failed to restore product stock for cancelled order: {}", e);
-            // Note: We don't return error here as the order status was already updated
-            // This is a business decision - you might want to handle this differently
+            return Err(AppError::DbError(e.to_string()));
         }
     }
 
-    HttpResponse::Ok().json(
-        serde_json::json!({
-        "message": "Order status updated successfully",
-        "order_id": order_id,
-        "new_status": new_status
-    })
+    Ok(
+        ApiResponse::ok("Order status updated successfully", OrderStatusResponse {
+            order_id,
+            new_status: new_status.to_string(),
+        })
     )
 }
 
-// Helper function to validate status transitions
 fn is_valid_status_transition(current: &str, new: &str) -> bool {
     match current {
         "Processing" => matches!(new, "Shipped" | "Cancelled"),
         "Shipped" => matches!(new, "Delivered" | "Returned"),
         "Delivered" => matches!(new, "Returned"),
-        "Cancelled" => false, // Cannot change from cancelled
-        "Returned" => false, // Cannot change from returned
+        "Cancelled" => false,
+        "Returned" => false,
         _ => false,
     }
 }
 
 // Helper function to restore product stock when order is cancelled
-async fn restore_product_stock(pool: &PgPool, order_id: &str) -> Result<(), sqlx::Error> {
+async fn restore_product_stock(pool: &PgPool, order_id: &str) -> Result<HttpResponse, AppError> {
     let order_products = sqlx
         ::query(
             "SELECT product_id, quantity FROM order_items op
@@ -555,32 +450,13 @@ async fn restore_product_stock(pool: &PgPool, order_id: &str) -> Result<(), sqlx
             .execute(pool).await?;
     }
 
-    Ok(())
-}
-
-#[derive(Serialize)]
-pub struct OrderItem {
-    pub product_id: Uuid,
-    pub product_name: String,
-    pub quantity: i64,
-    pub price_at_order_time: f64,
-}
-
-#[derive(Serialize)]
-pub struct Order {
-    pub id: Uuid,
-    pub order_id: String,
-    pub total_amount: f64,
-    pub order_status: String,
-    pub payment_status: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub items: Vec<OrderItem>,
+    Ok(ApiResponse::ok("Product stock restored successfully", ()))
 }
 
 pub async fn get_user_orders(
     pool: web::Data<PgPool>
     // user_id: web::ReqData<Uuid>, // injected from auth middleware
-) -> impl Responder {
+) -> Result<HttpResponse, AppError> {
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
 
     // Get all orders for the user
@@ -596,12 +472,7 @@ pub async fn get_user_orders(
     let order_rows = match orders_query.fetch_all(pool.get_ref()).await {
         Ok(rows) => rows,
         Err(e) => {
-            eprintln!("Database error fetching orders: {}", e);
-            return HttpResponse::InternalServerError().json(
-                serde_json::json!({
-                "error": "Failed to fetch orders"
-            })
-            );
+            return Err(AppError::DbError(e.to_string()));
         }
     };
 
@@ -628,8 +499,7 @@ pub async fn get_user_orders(
         let item_rows = match items_query.fetch_all(pool.get_ref()).await {
             Ok(rows) => rows,
             Err(e) => {
-                eprintln!("Failed to get order items: {}", e);
-                Vec::new()
+                return Err(AppError::DbError(e.to_string()));
             }
         };
 
@@ -657,7 +527,5 @@ pub async fn get_user_orders(
         orders.push(order);
     }
 
-    HttpResponse::Ok().json(serde_json::json!({
-        "orders": orders
-    }))
+    Ok(ApiResponse::ok("Orders fetched successfully", orders))
 }

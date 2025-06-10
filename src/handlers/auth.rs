@@ -1,6 +1,6 @@
-use std::env;
-use crate::email::send_email;
+use crate::{ config, email::send_email };
 use actix_web::{ web, HttpResponse };
+use config::Config;
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::{
@@ -60,7 +60,7 @@ pub async fn login(
         let is_valid = verify_password(&payload.password, &u.password)?;
 
         if is_valid {
-            let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+            let secret = Config::from_env().jwt_secret.clone();
             let token = create_jwt(&u.id.to_string(), &secret)?;
 
             return Ok(

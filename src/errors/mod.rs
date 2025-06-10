@@ -6,10 +6,7 @@ use crate::responses::ApiResponse;
 #[derive(Debug, Display)]
 pub enum AppError {
     #[display("Database error")] Database(SqlxError),
-
-    #[display("Invalid credentials")]
-    InvalidCredentials,
-
+    #[display("Invalid credentials")] InvalidCredentials,
     #[display("Unauthorized")] Unauthorized(String),
     #[display("Internal Server Error")] InternalServerError(String),
     #[display("Bad request")] BadRequest(String),
@@ -19,6 +16,7 @@ pub enum AppError {
     #[display("stripe error")] StripeError(String),
     #[display("email error")] Email(String),
     #[display("Forbidden")] Forbidden(String),
+    #[display("Address error")] AddressError(String),
 }
 
 impl std::error::Error for AppError {}
@@ -64,6 +62,11 @@ impl ResponseError for AppError {
                 ),
             AppError::Forbidden(message) =>
                 ApiResponse::<()>::error(actix_web::http::StatusCode::FORBIDDEN, message),
+            AppError::AddressError(message) =>
+                ApiResponse::<()>::error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    message
+                ),
         }
     }
 }
