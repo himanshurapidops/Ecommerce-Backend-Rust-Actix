@@ -27,8 +27,3 @@ pub struct AddToCartRequest {
     pub product_id: Uuid,
     pub quantity: Option<i64>,
 }
-
-#[derive(Debug, Deserialize)]
-pub struct RemoveFromCartRequest {
-    pub cart_item_id: Uuid,
-}

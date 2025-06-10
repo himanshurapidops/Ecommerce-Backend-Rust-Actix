@@ -7,10 +7,7 @@ mod responses;
 mod email;
 mod reports;
 use std::{ env, sync::Arc };
-use crate::{
-    middleware::jwt_auth,
-    reports::{ generate_report, get_date_range, schedule_report_tasks, send_email },
-};
+use crate::{ middleware::jwt_auth, reports::{ schedule_report_tasks } };
 use actix_web::{ http::header, web, App, HttpServer };
 use actix_cors::Cors;
 use env_logger::Env;

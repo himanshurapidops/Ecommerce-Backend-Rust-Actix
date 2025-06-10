@@ -1,4 +1,4 @@
-use actix_web::{ web, Scope };
+use actix_web::{ web };
 use crate::handlers::address::{
     create_address,
     get_address,

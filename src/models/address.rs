@@ -1,6 +1,5 @@
-use actix_web::{ web, HttpResponse, Result };
 use serde::{ Deserialize, Serialize };
-use sqlx::{ PgPool, FromRow };
+use sqlx::{  FromRow };
 use uuid::Uuid;
 use chrono::{ DateTime, Utc };
 
