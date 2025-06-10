@@ -3,6 +3,8 @@ use serde::{ Deserialize, Serialize };
 use sqlx::{ PgPool, Postgres, Row, Transaction };
 use uuid::Uuid;
 
+use crate::email::{ send_low_stock_email, send_order_confirmation_email };
+
 #[derive(Deserialize)]
 pub struct CreateOrderRequest {
     pub address_id: Uuid,
@@ -121,7 +123,15 @@ pub async fn create_order(
             Err(_) => "Unknown Product".to_string(),
         };
 
+        if count_in_stock <= 10 {
+            // Send email
+            if let Err(e) = send_low_stock_email(&name, count_in_stock).await {
+                eprintln!("Failed to send low stock email: {}", e);
+            }
+        }
+
         if count_in_stock < quantity {
+            // Send email
             return HttpResponse::BadRequest().json(
                 serde_json::json!({
                 "error": format!("Insufficient stock for product '{}'. Available: {}, Requested: {}", name, count_in_stock, quantity)
@@ -317,6 +327,23 @@ pub async fn create_order(
         return HttpResponse::InternalServerError().json(
             serde_json::json!({
             "error": "Failed to complete order"
+        })
+        );
+    }
+
+    // Send order confirmation email
+    if
+        let Err(e) = send_order_confirmation_email(
+            &order_id,
+            &user_id,
+            &address_id,
+            &total_amount
+        ).await
+    {
+        eprintln!("Failed to send order confirmation email: {}", e);
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({
+            "error": "Failed to send order confirmation email"
         })
         );
     }

@@ -50,3 +50,71 @@ pub async fn send_email(
         }
     }
 }
+
+use uuid::Uuid;
+
+pub async fn send_order_confirmation_email(
+    order_id: &String,
+    user_id: &Uuid,
+    address_id: &Uuid,
+    total_amount: &f64
+) -> Result<(), Box<dyn std::error::Error>> {
+    let from_email = env::var("EMAIL_FROM")?;
+    let to_email = env::var("EMAIL_TO")?;
+
+    let body = format!(
+        "🛒 Order Confirmation\n\n\
+        Dear Customer,\n\n\
+        Thank you for your order!\n\n\
+        📦 Order Details:\n\
+        - Order ID: {}\n\
+        - User ID: {}\n\
+        - Shipping Address ID: {}\n\
+        - Total Amount: ₹{:.2}\n\n\
+        We will notify you once your order is shipped.\n\n\
+        Regards,\nE-commerce Team",
+        order_id,
+        user_id,
+        address_id,
+        total_amount
+    );
+
+    let email = Message::builder()
+        .from(from_email.parse()?)
+        .to(to_email.parse()?)
+        .subject("✅ Order Confirmation")
+        .body(body)?;
+
+    let creds = Credentials::new(env::var("SMTP_USERNAME")?, env::var("SMTP_PASSWORD")?);
+
+    let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
+
+    mailer.send(&email)?;
+
+    Ok(())
+}
+
+pub async fn send_low_stock_email(
+    product_name: &str,
+    count_in_stock: i64
+) -> Result<(), Box<dyn std::error::Error>> {
+    let email = Message::builder()
+        .from(env::var("EMAIL_FROM")?.parse()?)
+        .to(env::var("EMAIL_TO")?.parse()?)
+        .subject("⚠️ Low Stock Alert")
+        .body(
+            format!(
+                "Product: {}\nCurrent Stock: {}\n\nStock is running low. Please restock as soon as possible.",
+                product_name,
+                count_in_stock
+            )
+        )?;
+
+    println!("Sending email stock alert...");
+    let creds = Credentials::new(env::var("SMTP_USERNAME")?, env::var("SMTP_PASSWORD")?);
+
+    let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
+
+    mailer.send(&email)?;
+    Ok(())
+}
