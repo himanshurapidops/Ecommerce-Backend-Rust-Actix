@@ -26,3 +26,7 @@ pub struct CreateProductInput {
     pub price: f64,
     pub count_in_stock: i64,
 }
+#[derive(serde::Deserialize)]
+pub struct UpdateStock {
+    pub count_in_stock: i32,
+}

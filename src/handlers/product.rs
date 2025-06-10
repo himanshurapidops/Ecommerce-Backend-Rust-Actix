@@ -1,7 +1,7 @@
 use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
 use crate::errors::AppError;
-use crate::models::product::{ CreateProductInput, Product };
+use crate::models::product::{ CreateProductInput, UpdateStock, Product };
 use crate::responses::ApiResponse;
 use uuid::Uuid;
 
@@ -44,7 +44,7 @@ pub async fn update_product(
             brand = $4,
             category = $5,
             price = $6,
-            count_in_stock = $7,
+            count_in_stock = $7
         WHERE id = $8 AND is_available = true
         RETURNING *
         "#
@@ -81,16 +81,21 @@ pub async fn delete_product(
 
     Ok(ApiResponse::ok("Product marked as unavailable", ()))
 }
-
 pub async fn update_product_stock(
     db: web::Data<PgPool>,
     path: web::Path<Uuid>,
-    payload: web::Json<i32>
+    payload: web::Json<UpdateStock>
 ) -> Result<HttpResponse, AppError> {
+    let stock = payload.count_in_stock;
+
+    if stock < 0 {
+        return Err(AppError::BadRequest("Stock must be greater than 0".into()));
+    }
+
     let updated = sqlx
         ::query("UPDATE products SET count_in_stock = $1 WHERE id = $2 AND is_available = true")
-        .bind(*payload)
-        .bind(*path)
+        .bind(stock)
+        .bind(path.into_inner())
         .execute(db.get_ref()).await?;
 
     if updated.rows_affected() == 0 {
@@ -99,6 +104,7 @@ pub async fn update_product_stock(
 
     Ok(ApiResponse::ok("Product stock updated", ()))
 }
+
 pub async fn create_product(
     db: web::Data<PgPool>,
     payload: web::Json<CreateProductInput>

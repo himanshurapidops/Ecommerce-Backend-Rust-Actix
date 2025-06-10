@@ -1,16 +1,12 @@
-// // routes/order_routes.rs
-// use actix_web::{ web, Scope };
-// use crate::handlers::order_handler::{
-//     create_payment_intent,
-//     create_order,
-//     get_order_status,
-//     stripe_health_check,
-// };
+use actix_web::web;
+use crate::handlers::order::{ create_order, update_order_status , get_user_orders};
 
-// pub fn init() -> Scope {
-//     web::scope("/orders")
-//         .route("/payment-intent", web::post().to(create_payment_intent))
-//         .route("/create", web::post().to(create_order))
-//         .route("/status/{order_id}", web::get().to(get_order_status))
-//         .route("/stripe/health", web::get().to(stripe_health_check))
-// }
+pub fn init(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web
+            ::scope("")
+            .service(web::resource("").route(web::post().to(create_order)))
+            .service(web::resource("/{id}").route(web::put().to(update_order_status)))
+            .service(web::resource("/user/{user_id}").route(web::get().to(get_user_orders)))
+    );
+}

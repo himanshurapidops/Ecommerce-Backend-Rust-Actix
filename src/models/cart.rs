@@ -10,7 +10,6 @@ pub struct CartProduct {
     pub product_id: Uuid,
     pub quantity: i64,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -23,7 +22,6 @@ pub struct Product {
     pub is_available: bool,
 }
 
-// === dto.rs ===
 #[derive(Debug, Deserialize)]
 pub struct AddToCartRequest {
     pub product_id: Uuid,

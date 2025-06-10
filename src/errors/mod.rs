@@ -18,6 +18,7 @@ pub enum AppError {
     #[display("user not found")] UserNotFound,
     #[display("product not found")] DbError(String),
     #[display("stripe error")] StripeError(String),
+    #[display("email error")] Email(String),
 }
 
 impl std::error::Error for AppError {}
@@ -52,6 +53,11 @@ impl ResponseError for AppError {
             AppError::DbError(message) =>
                 ApiResponse::<()>::error(actix_web::http::StatusCode::NOT_FOUND, message),
             AppError::StripeError(message) =>
+                ApiResponse::<()>::error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    message
+                ),
+            AppError::Email(message) =>
                 ApiResponse::<()>::error(
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                     message

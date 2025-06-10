@@ -4,13 +4,19 @@ mod models;
 mod handlers;
 mod middleware;
 mod responses;
-use std::env;
-use crate::middleware::jwt_auth;
+mod email;
+mod reports;
+use std::{ env, sync::Arc };
+use crate::{
+    middleware::jwt_auth,
+    reports::{ generate_report, get_date_range, schedule_report_tasks, send_email },
+};
 use actix_web::{ http::header, web, App, HttpServer };
 use actix_cors::Cors;
 use env_logger::Env;
 use config::Config;
 use db::init_db;
+
 mod errors;
 mod auth {
     pub mod jwt;
@@ -29,12 +35,18 @@ mod utils {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder
+        ::from_env(Env::default().default_filter_or("info,tokio_cron_scheduler=error"))
+        .init();
 
     let config = Config::from_env();
     let db_pool = init_db(&config).await;
 
-    log::info!("Starting server at http://127.0.0.1:4000");
+    let pool = Arc::new(db_pool.clone());
+
+    if let Err(e) = schedule_report_tasks(pool).await {
+        eprintln!(" Failed to schedule reports: {}", e);
+    }
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -48,21 +60,23 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
             .service(
-                web::scope("/api").service(
-                    web
-                        ::scope("/v1")
-                        .service(web::scope("/auth").configure(routes::auth::init))
-                        .service(
-                            web
-                                ::scope("/user")
-                                .wrap(jwt_auth::JwtMiddleware)
-                                .configure(routes::user::init)
-                        )
-                        .service(web::scope("/products").configure(routes::product::init))
-                        .service(web::scope("/cart").configure(routes::cart::init))
-                        .service(web::scope("/addresses").configure(routes::address::init))
-                    // .service(web::scope("/orders").configure(routes::order::init))
-                )
+                web
+                    ::scope("/api")
+                    .service(
+                        web
+                            ::scope("/v1")
+                            .service(web::scope("/auth").configure(routes::auth::init))
+                            .service(
+                                web
+                                    ::scope("/user")
+                                    .wrap(jwt_auth::JwtMiddleware)
+                                    .configure(routes::user::init)
+                            )
+                            .service(web::scope("/products").configure(routes::product::init))
+                            .service(web::scope("/cart").configure(routes::cart::init))
+                            .service(web::scope("/addresses").configure(routes::address::init))
+                            .service(web::scope("/orders").configure(routes::order::init))
+                    )
             )
     })
         .bind(("127.0.0.1", env::var("PORT").unwrap_or("4000".to_string()).parse().unwrap()))?

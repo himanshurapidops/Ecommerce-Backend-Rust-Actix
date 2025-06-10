@@ -1,5 +1,5 @@
 use std::env;
-
+use crate::email::send_email;
 use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -31,6 +31,18 @@ pub async fn register(
             eprintln!("SQLx error: {:?}", err);
             AppError::Database(err.into())
         })?;
+
+    match
+        send_email(
+            "himanshuisherenow@gmail.com",
+            "Registration successful",
+            "<h1>Registration successful</h1>",
+            "i am glad you registered"
+        ).await
+    {
+        Ok(_) => println!("Email sent successfully"),
+        Err(e) => println!("Failed to send email: {}", e),
+    }
 
     Ok(ApiResponse::ok("Registration successful", row))
 }
