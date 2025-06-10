@@ -21,7 +21,6 @@ bcrypt = "0.17.0"
 chrono = { version = "0.4.26", features = ["serde"] }
 futures-util = "0.3.31"
 actix-web-httpauth = "0.8.2"
-rdkafka = "0.37.0"
 thiserror = "2.0.12"
 validator = { version = "0.20", features = ["derive"] }
 anyhow = "1.0.98"
