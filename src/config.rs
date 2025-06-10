@@ -11,6 +11,7 @@ pub struct Config {
     pub email_from: String,
     pub email_to: String,
     pub port: u16,
+    pub nats_url: String,
 }
 
 impl Config {
@@ -36,6 +37,9 @@ impl Config {
                 .unwrap_or_else(|_| "4000".to_string())
                 .parse()
                 .unwrap(),
+            nats_url: std::env
+                ::var("NATS_URL")
+                .unwrap_or_else(|_| "nats://localhost:4222".to_string()),
         }
     }
 }

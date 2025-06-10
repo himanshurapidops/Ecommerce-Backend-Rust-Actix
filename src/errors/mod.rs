@@ -17,6 +17,8 @@ pub enum AppError {
     #[display("email error")] Email(String),
     #[display("Forbidden")] Forbidden(String),
     #[display("Address error")] AddressError(String),
+    #[display("Nats error")] NatsError(String),
+    #[display("Serialization error")] SerializationError(String),
 }
 
 impl std::error::Error for AppError {}
@@ -63,6 +65,16 @@ impl ResponseError for AppError {
             AppError::Forbidden(message) =>
                 ApiResponse::<()>::error(actix_web::http::StatusCode::FORBIDDEN, message),
             AppError::AddressError(message) =>
+                ApiResponse::<()>::error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    message
+                ),
+            AppError::NatsError(message) =>
+                ApiResponse::<()>::error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    message
+                ),
+            AppError::SerializationError(message) =>
                 ApiResponse::<()>::error(
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                     message

@@ -14,7 +14,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web
             ::scope("")
-            .wrap(jwt_auth::JwtMiddleware)
+            // .wrap(jwt_auth::JwtMiddleware)
             .route("/", web::post().to(create_address))
             .route("/{id}", web::get().to(get_address))
             .route("/{id}", web::put().to(update_address))

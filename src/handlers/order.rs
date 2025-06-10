@@ -1,7 +1,8 @@
-use actix_web::{ web, HttpResponse, Responder };
-use serde::{ Deserialize, Serialize };
+use actix_web::{ web, HttpResponse };
 use sqlx::{ PgPool, Postgres, Row, Transaction };
 use uuid::Uuid;
+use async_nats::Client;
+use std::sync::Arc;
 
 use crate::{
     email::{ send_low_stock_email, send_order_confirmation_email },
@@ -14,12 +15,14 @@ use crate::{
         OrderStatusResponse,
         UpdateOrderStatusRequest,
     },
+    nats::{ publish_order_email, EmailPayload },
     responses::ApiResponse,
 };
 
 pub async fn create_order(
     pool: web::Data<PgPool>,
     // user_id: web::ReqData<Uuid>, // injected from auth middleware
+    nats_client: web::Data<Arc<Client>>, // Add this line
     payload: web::Json<CreateOrderRequest>
 ) -> Result<HttpResponse, AppError> {
     let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
@@ -261,16 +264,26 @@ pub async fn create_order(
     }
 
     // Send order confirmation email
-    if
-        let Err(e) = send_order_confirmation_email(
-            &order_id,
-            &user_id,
-            &address_id,
-            &total_amount
-        ).await
-    {
-        eprintln!("Failed to send order confirmation email: {}", e);
-        return Err(AppError::Email(e.to_string()));
+    // if
+    //     let Err(e) = send_order_confirmation_email(
+    //         &order_id,
+    //         &user_id,
+    //         &address_id,
+    //         &total_amount
+    //     ).await
+    // {
+    //     eprintln!("Failed to send order confirmation email: {}", e);
+    //     return Err(AppError::Email(e.to_string()));
+    // }
+
+    let payload = EmailPayload {
+        to: "himanshuisherenow@gmail.com".to_string(),
+        subject: "Order Confirmation".to_string(),
+        body: format!("Your order {} has been confirmed!", order_id),
+    };
+
+    if let Err(err) = publish_order_email(&nats_client, payload).await {
+        log::error!("Failed to publish email task: {:?}", err);
     }
 
     let order_response = OrderResponse {

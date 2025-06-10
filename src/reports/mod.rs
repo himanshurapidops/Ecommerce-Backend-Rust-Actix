@@ -16,7 +16,7 @@ pub struct SalesReport {
 
 pub async fn generate_report(
     pool: &PgPool,
-    start_date: NaiveDateTime,
+    start_date: NaiveDateTime,  
     end_date: NaiveDateTime
 ) -> Result<SalesReport, sqlx::Error> {
     let row = sqlx

@@ -23,8 +23,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web
             ::scope("")
-            .wrap(JwtMiddleware)
-            .wrap(AdminMiddleware)
+            // .wrap(JwtMiddleware)
+            // .wrap(AdminMiddleware)
             .route("/create", web::post().to(create_product))
             .route("/{id}", web::put().to(update_product))
             .route("/{id}/stock", web::put().to(update_product_stock))

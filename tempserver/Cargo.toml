@@ -1,0 +1,11 @@
+[package]
+name = "tempserver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-nats = "0.41.0"
+futures = "0.3.31"
+serde = "1.0.219"
+serde_json = "1.0.140"
+tokio = { version = "1.45.1", features = ["full"] }

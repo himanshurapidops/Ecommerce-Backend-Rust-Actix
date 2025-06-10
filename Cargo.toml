@@ -32,4 +32,6 @@ lettre = { version = "0.11.17", features = [ "smtp-transport", "builder"] }
 bigdecimal = "0.4.8"
 tokio-cron-scheduler = "0.14.0"
 async-nats = "0.41.0"
+regex = "1.11.1"
+lazy_static = "1.5.0"
 

@@ -12,8 +12,8 @@ use actix_web::{ http::header, web, App, HttpServer };
 use actix_cors::Cors;
 use env_logger::Env;
 use config::Config;
+mod nats;
 use db::init_db;
-
 mod errors;
 mod auth {
     pub mod jwt;
@@ -36,6 +36,9 @@ async fn main() -> std::io::Result<()> {
         ::from_env(Env::default().default_filter_or("info,tokio_cron_scheduler=error"))
         .init();
 
+    let nats_client = async_nats::connect("nats://localhost:4222").await.unwrap();
+    let shared_nats = Arc::new(nats_client);
+
     let config = Config::from_env();
     let db_pool = init_db(&config).await;
 
@@ -53,6 +56,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(shared_nats.clone()))
 
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
