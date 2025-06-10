@@ -5,35 +5,36 @@ use async_nats::Client;
 use std::sync::Arc;
 
 use crate::{
-    email::{ send_low_stock_email, send_order_confirmation_email },
+    email::send_low_stock_email,
     errors::AppError,
-    models::order::{
-        CreateOrderRequest,
-        Order,
-        OrderItem,
-        OrderResponse,
-        OrderStatusResponse,
-        UpdateOrderStatusRequest,
+    models::{
+        auth::User,
+        order::{
+            CreateOrderRequest,
+            Order,
+            OrderItem,
+            OrderResponse,
+            OrderStatusResponse,
+            UpdateOrderStatusRequest,
+        },
     },
-    nats::{ publish_order_email, EmailPayload },
+    nats::{ publish_order_email, EmailPayloadOrder },
     responses::ApiResponse,
 };
 
 pub async fn create_order(
     pool: web::Data<PgPool>,
-    // user_id: web::ReqData<Uuid>, // injected from auth middleware
-    nats_client: web::Data<Arc<Client>>, // Add this line
+    user_id: web::ReqData<Uuid>,
+    nats_client: web::Data<Arc<Client>>,
     payload: web::Json<CreateOrderRequest>
 ) -> Result<HttpResponse, AppError> {
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
     let address_id = payload.address_id;
 
-    // Check if address belongs to user
     let address_exists = match
         sqlx
             ::query("SELECT EXISTS(SELECT 1 FROM addresses WHERE id = $1 AND user_id = $2)")
             .bind(address_id)
-            .bind(user_id)
+            .bind(*user_id)
             .fetch_one(pool.get_ref()).await
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
@@ -55,7 +56,7 @@ pub async fn create_order(
          JOIN products p ON cp.product_id = p.id
          WHERE cp.user_id = $1"
             )
-            .bind(user_id)
+            .bind(*user_id)
             .fetch_all(pool.get_ref()).await
     {
         Ok(items) if !items.is_empty() => items,
@@ -136,7 +137,7 @@ pub async fn create_order(
      RETURNING id"
             )
             .bind(Uuid::new_v4())
-            .bind(&user_id)
+            .bind(*user_id)
             .bind(&order_id)
             .bind(Uuid::new_v4().to_string()) // dummy payment id
             .bind(&address_id)
@@ -247,7 +248,7 @@ pub async fn create_order(
     if
         let Err(e) = sqlx
             ::query("DELETE FROM cart_products WHERE user_id = $1")
-            .bind(user_id)
+            .bind(*user_id)
             .execute(&mut *tx).await
     {
         eprintln!("Failed to clear cart: {}", e);
@@ -276,8 +277,17 @@ pub async fn create_order(
     //     return Err(AppError::Email(e.to_string()));
     // }
 
-    let payload = EmailPayload {
-        to: "himanshuisherenow@gmail.com".to_string(),
+    let user = sqlx
+        ::query_as::<_, User>("SELECT email FROM users WHERE id = $1")
+        .bind(*user_id)
+        .fetch_one(pool.get_ref()).await?;
+
+    let payload = EmailPayloadOrder {
+        to: user.email.clone(),
+        order_id: order_id.clone(),
+        total_amount: total_amount,
+        address_id: address_id.clone(),
+        user_id: user_id.clone(),
         subject: "Order Confirmation".to_string(),
         body: format!("Your order {} has been confirmed!", order_id),
     };

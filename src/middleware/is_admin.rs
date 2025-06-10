@@ -51,7 +51,6 @@ impl<S, B> Service<ServiceRequest>
         let srv = self.service.clone();
 
         Box::pin(async move {
-            // Extract user in its own block to end the borrow before moving `req`
             let is_admin = {
                 if let Some(user) = req.extensions().get::<User>() {
                     user.role == "admin" // or `user.is_admin == true`

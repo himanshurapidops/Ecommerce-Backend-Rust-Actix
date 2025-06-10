@@ -8,13 +8,9 @@ use crate::responses::ApiResponse;
 
 pub async fn add_to_cart(
     pool: web::Data<PgPool>,
-    // user_id: web::ReqData<Uuid>,
+    user_id: web::ReqData<Uuid>,
     payload: web::Json<AddToCartRequest>
 ) -> Result<HttpResponse, AppError> {
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").map_err(|_|
-        AppError::BadRequest("Invalid user ID".into())
-    )?;
-
     println!("1️⃣ Extracting quantity...");
     let quantity_to_add = payload.quantity.unwrap_or(1);
     if quantity_to_add < 1 || quantity_to_add > 10 {
@@ -43,7 +39,7 @@ pub async fn add_to_cart(
         ::query_as::<_, CartProduct>(
             "SELECT * FROM cart_products WHERE user_id = $1 AND product_id = $2"
         )
-        .bind(user_id)
+        .bind(*user_id)
         .bind(payload.product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
@@ -84,7 +80,7 @@ pub async fn add_to_cart(
          VALUES ($1, $2, $3, $4, $5)"
         )
         .bind(Uuid::new_v4())
-        .bind(user_id)
+        .bind(*user_id)
         .bind(payload.product_id)
         .bind(quantity_to_add)
         .bind(Utc::now())
