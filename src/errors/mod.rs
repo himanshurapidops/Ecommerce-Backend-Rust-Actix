@@ -1,5 +1,4 @@
 use actix_web::{ HttpResponse, ResponseError };
-use cdrs_tokio::frame::message_ready;
 use derive_more::Display;
 use sqlx::Error as SqlxError;
 use crate::responses::ApiResponse;
@@ -19,6 +18,7 @@ pub enum AppError {
     #[display("product not found")] DbError(String),
     #[display("stripe error")] StripeError(String),
     #[display("email error")] Email(String),
+    #[display("Forbidden")] Forbidden(String),
 }
 
 impl std::error::Error for AppError {}
@@ -62,6 +62,8 @@ impl ResponseError for AppError {
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                     message
                 ),
+            AppError::Forbidden(message) =>
+                ApiResponse::<()>::error(actix_web::http::StatusCode::FORBIDDEN, message),
         }
     }
 }

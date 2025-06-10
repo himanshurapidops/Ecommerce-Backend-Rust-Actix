@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub struct User {
     pub id: Uuid,
     pub email: String,
+    pub role: String,
     pub password: String,
     pub created_at: chrono::DateTime<Utc>,
 }
