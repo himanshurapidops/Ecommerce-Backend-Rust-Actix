@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target/
+/tempserver/target/
 /**/*.rs.bk
 
 # Cargo generated files
