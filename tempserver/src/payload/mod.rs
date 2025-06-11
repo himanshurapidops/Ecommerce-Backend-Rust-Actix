@@ -1,13 +1,13 @@
 use serde::{ Deserialize, Serialize };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct EmailPayloadOrder {
-    pub to: String,
-    pub subject: String,
-    pub body: String,
+    pub email: String,
+    pub order_id: String,
+    pub total_amount: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EmailPayloadRegister {
     pub to: String,
     pub subject: String,
@@ -65,31 +65,18 @@ pub async fn send_email(
     }
 }
 
-use uuid::Uuid;
-
 pub async fn send_order_confirmation_email(
-    order_id: &String,
-    user_id: &Uuid,
-    address_id: &Uuid,
+    email: &str,
+    order_id: &str,
     total_amount: &f64
 ) -> Result<(), Box<dyn std::error::Error>> {
     let from_email = Config::from_env().email_from.clone();
     let to_email = Config::from_env().email_to.clone();
 
     let body = format!(
-        "🛒 Order Confirmation\n\n\
-        Dear Customer,\n\n\
-        Thank you for your order!\n\n\
-        📦 Order Details:\n\
-        - Order ID: {}\n\
-        - User ID: {}\n\
-        - Shipping Address ID: {}\n\
-        - Total Amount: ₹{:.2}\n\n\
-        We will notify you once your order is shipped.\n\n\
-        Regards,\nE-commerce Team",
+        "Order ID: {}\nEmail: {}\nTotal Amount: {}\n\nThank you for your purchase!",
         order_id,
-        user_id,
-        address_id,
+        email,
         total_amount
     );
 
@@ -108,33 +95,5 @@ pub async fn send_order_confirmation_email(
 
     mailer.send(&email)?;
 
-    Ok(())
-}
-
-pub async fn send_low_stock_email(
-    product_name: &str,
-    count_in_stock: i64
-) -> Result<(), Box<dyn std::error::Error>> {
-    let email = Message::builder()
-        .from(Config::from_env().email_from.parse()?)
-        .to(Config::from_env().email_to.parse()?)
-        .subject("⚠️ Low Stock Alert")
-        .body(
-            format!(
-                "Product: {}\nCurrent Stock: {}\n\nStock is running low. Please restock as soon as possible.",
-                product_name,
-                count_in_stock
-            )
-        )?;
-
-    println!("Sending email stock alert...");
-    let creds = Credentials::new(
-        Config::from_env().smtp_username.clone(),
-        Config::from_env().smtp_password.clone()
-    );
-
-    let mailer = SmtpTransport::relay("smtp.gmail.com")?.credentials(creds).build();
-
-    mailer.send(&email)?;
     Ok(())
 }

@@ -2,7 +2,7 @@ use chrono::{ DateTime, Utc };
 use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -14,12 +14,12 @@ pub struct User {
     pub role: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LoginInput {
     pub email: String,
     pub password: String,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UpdateUserInput {
     pub email: Option<String>,
     pub full_name: Option<String>,

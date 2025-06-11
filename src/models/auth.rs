@@ -2,7 +2,7 @@ use chrono::{ DateTime, Utc };
 use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct RegisterInput {
     pub email: String,
     pub password: String,
@@ -10,7 +10,7 @@ pub struct RegisterInput {
     pub mobile: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LoginInput {
     pub email: String,
     pub password: String,

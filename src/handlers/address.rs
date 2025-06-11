@@ -4,13 +4,14 @@ use uuid::Uuid;
 use crate::handlers::address;
 use crate::models::address::{ Address, CreateAddressRequest, UpdateAddressRequest };
 use crate::errors::AppError;
+use crate::models::user::User as UserResponse;
 use crate::responses::ApiResponse;
 
-// Combined handlers with inline queries
 pub async fn create_address(
     pool: web::Data<PgPool>,
+    user: web::ReqData<UserResponse>,
     req: web::Json<CreateAddressRequest>
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, AppError> {
     let req = req.into_inner();
 
     match
@@ -29,14 +30,11 @@ pub async fn create_address(
             .bind(req.country.unwrap_or_else(|| "India".to_string()))
             .bind(&req.mobile)
             .bind(req.selected.unwrap_or(false))
-            .bind(&req.user_id)
+            .bind(user.id.to_string())
             .fetch_one(pool.as_ref()).await
     {
-        Ok(address) => Ok(HttpResponse::Created().json(address)),
-        Err(e) => {
-            eprintln!("Error creating address: {}", e);
-            Ok(HttpResponse::InternalServerError().json("Failed to create address"))
-        }
+        Ok(address) => Ok(ApiResponse::ok("Address created", address)),
+        Err(e) => Err(AppError::AddressError(e.to_string())),
     }
 }
 
@@ -60,16 +58,14 @@ pub async fn get_address(
 
 pub async fn get_user_addresses(
     pool: web::Data<PgPool>,
-    path: web::Path<Uuid>
+    user: web::ReqData<UserResponse>
 ) -> Result<HttpResponse, AppError> {
-    let user_id = path.into_inner();
-
     match
         sqlx
             ::query_as::<_, Address>(
                 "SELECT * FROM addresses WHERE user_id = $1 ORDER BY created_at DESC"
             )
-            .bind(user_id)
+            .bind(user.id)
             .fetch_all(pool.as_ref()).await
     {
         Ok(addresses) => Ok(ApiResponse::ok("Addresses found", addresses)),
@@ -80,6 +76,7 @@ pub async fn get_user_addresses(
 pub async fn update_address(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
+
     req: web::Json<UpdateAddressRequest>
 ) -> Result<HttpResponse, AppError> {
     let id = path.into_inner();
@@ -132,9 +129,10 @@ pub async fn delete_address(
 
 pub async fn set_selected_address(
     pool: web::Data<PgPool>,
-    path: web::Path<(Uuid, Uuid)>
+    user: web::ReqData<UserResponse>,
+    path: web::Path<Uuid>
 ) -> Result<HttpResponse, AppError> {
-    let (user_id, address_id) = path.into_inner();
+    let address_id = path.into_inner();
 
     let mut tx = match pool.begin().await {
         // Ok(tx) => tx,
@@ -152,7 +150,7 @@ pub async fn set_selected_address(
     if
         let Err(e) = sqlx
             ::query("UPDATE addresses SET selected = false WHERE user_id = $1")
-            .bind(user_id)
+            .bind(user.id)
             .execute(&mut *tx).await
     {
         eprintln!("Error unselecting addresses: {}", e);
@@ -166,7 +164,7 @@ pub async fn set_selected_address(
                 "UPDATE addresses SET selected = true WHERE id = $1 AND user_id = $2 RETURNING *"
             )
             .bind(address_id)
-            .bind(user_id)
+            .bind(user.id)
             .fetch_optional(&mut *tx).await
     {
         Ok(Some(address)) => {
@@ -176,6 +174,7 @@ pub async fn set_selected_address(
                 Ok(ApiResponse::ok("Address selected", address))
             }
         }
+
         Ok(None) => {
             let _ = tx.rollback().await;
             Ok(ApiResponse::ok("Address not found", ""))

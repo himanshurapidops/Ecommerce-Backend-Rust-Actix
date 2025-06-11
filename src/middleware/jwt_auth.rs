@@ -1,7 +1,13 @@
-use actix_web::{ dev::{ Service, ServiceRequest, ServiceResponse, Transform }, Error, HttpMessage };
+use actix_web::{
+    dev::{ Service, ServiceRequest, ServiceResponse, Transform },
+    web,
+    Error,
+    HttpMessage,
+};
 use futures_util::future::{ ok, Ready, LocalBoxFuture };
+use sqlx::PgPool;
 use std::rc::Rc;
-use crate::{ config::Config, errors::AppError };
+use crate::{ config::Config, errors::AppError, models::user::User };
 use actix_web::http::header::AUTHORIZATION;
 
 pub struct JwtMiddleware;
@@ -47,6 +53,7 @@ impl<S, B> Service<ServiceRequest>
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        println!("JWT middleware called");
         let auth_header = req.headers().get(AUTHORIZATION).cloned();
 
         let srv = self.service.clone();
@@ -56,10 +63,29 @@ impl<S, B> Service<ServiceRequest>
                 if token_str.starts_with("Bearer ") {
                     let token = &token_str[7..];
 
+                    let db = req
+                        .app_data::<web::Data<PgPool>>()
+                        .ok_or_else(||
+                            AppError::InternalServerError("Database pool not found".into())
+                        )?;
+
                     let config = Config::from_env();
 
                     if let Ok(user) = crate::auth::jwt::decode_jwt(token, &config.jwt_secret) {
-                        req.extensions_mut().insert(user);
+                        let user_info = sqlx
+                            ::query_as::<_, User>(
+                                r#"
+                        SELECT id, email, full_name, mobile, password, status, role, created_at
+                        FROM users
+                        WHERE id = $1
+                        "#
+                            )
+                            .bind(&user.sub)
+
+                            .fetch_one(db.as_ref()).await
+                            .map_err(|_| AppError::Unauthorized("User not found".into()))?;
+
+                        req.extensions_mut().insert(user_info);
                     }
 
                     return srv.call(req).await;

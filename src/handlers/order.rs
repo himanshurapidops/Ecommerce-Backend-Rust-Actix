@@ -8,7 +8,7 @@ use crate::{
     email::send_low_stock_email,
     errors::AppError,
     models::{
-        auth::User,
+        user::User as UserResponse,
         order::{
             CreateOrderRequest,
             Order,
@@ -24,7 +24,7 @@ use crate::{
 
 pub async fn create_order(
     pool: web::Data<PgPool>,
-    user_id: web::ReqData<Uuid>,
+    user: web::ReqData<UserResponse>,
     nats_client: web::Data<Arc<Client>>,
     payload: web::Json<CreateOrderRequest>
 ) -> Result<HttpResponse, AppError> {
@@ -34,8 +34,9 @@ pub async fn create_order(
         sqlx
             ::query("SELECT EXISTS(SELECT 1 FROM addresses WHERE id = $1 AND user_id = $2)")
             .bind(address_id)
-            .bind(*user_id)
+            .bind(&user.id)
             .fetch_one(pool.get_ref()).await
+            .map_err(|e| AppError::DbError(e.to_string()))
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
         Err(e) => {
@@ -56,8 +57,9 @@ pub async fn create_order(
          JOIN products p ON cp.product_id = p.id
          WHERE cp.user_id = $1"
             )
-            .bind(*user_id)
+            .bind(&user.id)
             .fetch_all(pool.get_ref()).await
+            .map_err(|e| AppError::DbError(e.to_string()))
     {
         Ok(items) if !items.is_empty() => items,
         Ok(_) => {
@@ -137,7 +139,7 @@ pub async fn create_order(
      RETURNING id"
             )
             .bind(Uuid::new_v4())
-            .bind(*user_id)
+            .bind(&user.id)
             .bind(&order_id)
             .bind(Uuid::new_v4().to_string()) // dummy payment id
             .bind(&address_id)
@@ -248,7 +250,7 @@ pub async fn create_order(
     if
         let Err(e) = sqlx
             ::query("DELETE FROM cart_products WHERE user_id = $1")
-            .bind(*user_id)
+            .bind(&user.id)
             .execute(&mut *tx).await
     {
         eprintln!("Failed to clear cart: {}", e);
@@ -277,19 +279,10 @@ pub async fn create_order(
     //     return Err(AppError::Email(e.to_string()));
     // }
 
-    let user = sqlx
-        ::query_as::<_, User>("SELECT email FROM users WHERE id = $1")
-        .bind(*user_id)
-        .fetch_one(pool.get_ref()).await?;
-
     let payload = EmailPayloadOrder {
-        to: user.email.clone(),
+        email: user.email.clone(),
         order_id: order_id.clone(),
         total_amount: total_amount,
-        address_id: address_id.clone(),
-        user_id: user_id.clone(),
-        subject: "Order Confirmation".to_string(),
-        body: format!("Your order {} has been confirmed!", order_id),
     };
 
     if let Err(err) = publish_order_email(&nats_client, payload).await {
@@ -306,18 +299,15 @@ pub async fn create_order(
 
 pub async fn update_order_status(
     pool: web::Data<PgPool>,
-    // user_id: web::ReqData<Uuid>, // injected from auth middleware
     path: web::Path<String>,
+    user: web::ReqData<UserResponse>,
     payload: web::Json<UpdateOrderStatusRequest>
 ) -> Result<HttpResponse, AppError> {
-    // let user_id = user_id.into_inner();
     let order_id = path.into_inner();
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
 
     let new_status = &payload.order_status;
     let payment_status = &payload.payment_status;
 
-    // Validate order status
     let valid_order_statuses = ["Processing", "Shipped", "Delivered", "Cancelled", "Returned"];
     if !valid_order_statuses.contains(&new_status.as_str()) {
         return Err(
@@ -350,7 +340,7 @@ pub async fn update_order_status(
         sqlx
             ::query("SELECT EXISTS(SELECT 1 FROM orders WHERE order_id = $1 AND user_id = $2)")
             .bind(&order_id)
-            .bind(user_id)
+            .bind(user.id)
             .fetch_one(pool.get_ref()).await
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
@@ -370,7 +360,7 @@ pub async fn update_order_status(
                 "SELECT order_status, payment_status FROM orders WHERE order_id = $1 AND user_id = $2"
             )
             .bind(&order_id)
-            .bind(user_id)
+            .bind(user.id)
             .fetch_one(pool.get_ref()).await
     {
         Ok(row) => row,
@@ -403,7 +393,7 @@ pub async fn update_order_status(
             .bind(new_status)
             .bind(payment_status)
             .bind(&order_id)
-            .bind(user_id)
+            .bind(user.id)
     } else {
         sqlx::query(
             "UPDATE orders 
@@ -412,7 +402,7 @@ pub async fn update_order_status(
         )
             .bind(new_status)
             .bind(&order_id)
-            .bind(user_id)
+            .bind(user.id)
     };
 
     match update_query.execute(pool.get_ref()).await {
@@ -477,12 +467,9 @@ async fn restore_product_stock(pool: &PgPool, order_id: &str) -> Result<HttpResp
 }
 
 pub async fn get_user_orders(
-    pool: web::Data<PgPool>
-    // user_id: web::ReqData<Uuid>, // injected from auth middleware
+    pool: web::Data<PgPool>,
+    user: web::ReqData<UserResponse>
 ) -> Result<HttpResponse, AppError> {
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
-
-    // Get all orders for the user
     let orders_query = sqlx
         ::query(
             "SELECT id, order_id, total_amount, order_status, payment_status, created_at 
@@ -490,7 +477,7 @@ pub async fn get_user_orders(
          WHERE user_id = $1 
          ORDER BY created_at DESC"
         )
-        .bind(user_id);
+        .bind(user.id);
 
     let order_rows = match orders_query.fetch_all(pool.get_ref()).await {
         Ok(rows) => rows,

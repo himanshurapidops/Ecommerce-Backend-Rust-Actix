@@ -86,6 +86,7 @@ pub async fn update_product_stock(
     path: web::Path<Uuid>,
     payload: web::Json<UpdateStock>
 ) -> Result<HttpResponse, AppError> {
+    println!("update_product_stock: {}", path);
     let stock = payload.count_in_stock;
 
     if stock < 0 {

@@ -7,6 +7,7 @@ use payload::EmailPayloadOrder;
 use payload::EmailPayloadRegister;
 
 use crate::payload::send_email;
+use crate::payload::send_order_confirmation_email;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,17 +16,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sub = client.subscribe("order.confirmed.email").await?;
 
     let mut sub2 = client.subscribe("register.user").await?;
-
-    // while let Some(message) = sub.next().await {
-    //     println!(" Raw message: {:?}", String::from_utf8_lossy(&message.payload));
-
-    //     let payload: EmailPayload = match from_slice(&message.payload) {
-    //         Ok(p) => p,
-    //         Err(e) => {
-    //             eprintln!(" Failed to parse email payload: {}", e);
-    //             continue;
-    //         }
-    //     };
 
     let order_confirmed = tokio::spawn(async move {
         while let Some(message) = sub.next().await {
@@ -40,9 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             send_order_confirmation_email(
+                &payload.email,
                 &payload.order_id,
-                &payload.user_id,
-                &payload.address_id,
                 &payload.total_amount
             ).await
                 .map_err(|e| eprintln!("Failed to send email: {}", e))

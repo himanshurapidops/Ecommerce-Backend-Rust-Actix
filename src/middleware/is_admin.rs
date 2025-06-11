@@ -3,7 +3,7 @@ use futures_util::future::{ ok, Ready, LocalBoxFuture };
 use std::rc::Rc;
 
 use crate::errors::AppError;
-use crate::models::user::User; // adjust based on your user model path
+use crate::models::user::User;
 
 pub struct AdminMiddleware;
 
@@ -48,16 +48,16 @@ impl<S, B> Service<ServiceRequest>
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        println!("Admin middleware called");
         let srv = self.service.clone();
 
         Box::pin(async move {
-            let is_admin = {
-                if let Some(user) = req.extensions().get::<User>() {
-                    user.role == "admin" // or `user.is_admin == true`
-                } else {
-                    return Err(AppError::Unauthorized("User not authenticated".into()).into());
-                }
-            };
+            println!("Admin middleware called 2");
+            let is_admin = req
+                .extensions()
+                .get::<User>()
+                .map(|user| user.role == "ADMIN")
+                .unwrap_or(false);
 
             if is_admin {
                 srv.call(req).await

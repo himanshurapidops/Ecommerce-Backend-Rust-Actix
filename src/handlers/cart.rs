@@ -1,6 +1,7 @@
 use actix_web::{ web, HttpResponse, Responder };
 use chrono::Utc;
 use crate::models::cart::{ CartProduct, Product, AddToCartRequest };
+use crate::models::user::User as UserResponse;
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::errors::AppError;
@@ -8,7 +9,7 @@ use crate::responses::ApiResponse;
 
 pub async fn add_to_cart(
     pool: web::Data<PgPool>,
-    user_id: web::ReqData<Uuid>,
+    user: web::ReqData<UserResponse>,
     payload: web::Json<AddToCartRequest>
 ) -> Result<HttpResponse, AppError> {
     println!("1️⃣ Extracting quantity...");
@@ -39,7 +40,7 @@ pub async fn add_to_cart(
         ::query_as::<_, CartProduct>(
             "SELECT * FROM cart_products WHERE user_id = $1 AND product_id = $2"
         )
-        .bind(*user_id)
+        .bind(user.id)
         .bind(payload.product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
@@ -80,7 +81,7 @@ pub async fn add_to_cart(
          VALUES ($1, $2, $3, $4, $5)"
         )
         .bind(Uuid::new_v4())
-        .bind(*user_id)
+        .bind(user.id)
         .bind(payload.product_id)
         .bind(quantity_to_add)
         .bind(Utc::now())
@@ -93,13 +94,13 @@ pub async fn add_to_cart(
     println!("✅ New item added to cart.");
     Ok(ApiResponse::<()>::ok("Product added to cart", ()))
 }
-pub async fn get_cart(pool: web::Data<PgPool>) -> Result<impl Responder, AppError> {
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").map_err(|_|
-        AppError::BadRequest("Invalid user ID".into())
-    )?;
+pub async fn get_cart(
+    pool: web::Data<PgPool>,
+    user: web::ReqData<UserResponse>
+) -> Result<impl Responder, AppError> {
     let cart_items = sqlx
         ::query_as::<_, CartProduct>("SELECT * FROM cart_products WHERE user_id = $1")
-        .bind(user_id)
+        .bind(user.id)
         .fetch_all(pool.get_ref()).await
         .map_err(|e| {
             eprintln!("DB error: {:?}", e);
@@ -111,14 +112,15 @@ pub async fn get_cart(pool: web::Data<PgPool>) -> Result<impl Responder, AppErro
 
 pub async fn remove_from_cart(
     pool: web::Data<PgPool>,
+    user: web::ReqData<UserResponse>,
     cart_item_id: web::Path<Uuid>
 ) -> Result<HttpResponse, AppError> {
     let cart_item_id = cart_item_id.into_inner();
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
+
     let result = sqlx
-        ::query("DELETE FROM cart_products WHERE id = $1 AND user_id = $2")
+        ::query("DELETE FROM cart_products WHERE product_id = $1 AND user_id = $2")
         .bind(cart_item_id)
-        .bind(user_id)
+        .bind(user.id)
         .execute(pool.get_ref()).await;
 
     match result {
@@ -127,14 +129,13 @@ pub async fn remove_from_cart(
     }
 }
 
-pub async fn clear_cart(pool: web::Data<PgPool>) -> Result<HttpResponse, AppError> {
-    let user_id = Uuid::parse_str("02d3ef6f-8de6-4248-bcf9-6ee18d2b4bbf").unwrap();
-
-    println!("User ID: {:?}", user_id);
-
+pub async fn clear_cart(
+    pool: web::Data<PgPool>,
+    user: web::ReqData<UserResponse>
+) -> Result<HttpResponse, AppError> {
     let result = sqlx
         ::query("DELETE FROM cart_products WHERE user_id = $1")
-        .bind(user_id)
+        .bind(user.id)
         .execute(pool.get_ref()).await
         .map_err(|e| {
             eprintln!("❌ DB error while clearing cart: {:?}", e);

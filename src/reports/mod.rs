@@ -16,7 +16,7 @@ pub struct SalesReport {
 
 pub async fn generate_report(
     pool: &PgPool,
-    start_date: NaiveDateTime,  
+    start_date: NaiveDateTime,
     end_date: NaiveDateTime
 ) -> Result<SalesReport, sqlx::Error> {
     let row = sqlx
@@ -38,7 +38,7 @@ pub async fn generate_report(
 pub fn get_date_range(period: &str) -> (NaiveDateTime, NaiveDateTime) {
     let now = Utc::now().naive_utc();
     match period {
-        "minutely" => (now - Duration::minutes(1), now),
+        // "minutely" => (now - Duration::minutes(1), now),
         "daily" => {
             let start_date = now.date().and_hms_opt(0, 0, 0).unwrap();
             (start_date, now)
@@ -75,12 +75,13 @@ pub async fn send_email(report: &SalesReport) -> Result<(), Box<dyn std::error::
 
 pub async fn schedule_report_tasks(pool: Arc<PgPool>) -> anyhow::Result<()> {
     let sched = JobScheduler::new().await?;
-    let periods = vec!["minutely", "daily", "weekly", "monthly", "yearly"];
+    // let periods = vec!["minutely", "daily", "weekly", "monthly", "yearly"];
+    let periods = vec!["daily", "weekly", "monthly", "yearly"];
 
     for period in periods {
         // Fixed cron expressions - format: "sec min hour day month dayofweek" (6 fields)
         let job_expr = match period {
-            "minutely" => "0 * * * * *",
+            // "minutely" => "0 * * * * *",
             "daily" => "0 0 8 * * *", // 08:00:00 every day
             "weekly" => "0 0 8 * * 1", // 08:00:00 every Monday (1 = Monday)
             "monthly" => "0 0 8 1 * *", // 08:00:00 on 1st of each month
