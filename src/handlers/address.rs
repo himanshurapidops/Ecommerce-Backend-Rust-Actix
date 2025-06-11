@@ -1,7 +1,6 @@
 use actix_web::{ HttpResponse, web, Result };
 use sqlx::PgPool;
 use uuid::Uuid;
-use crate::handlers::address;
 use crate::models::address::{ Address, CreateAddressRequest, UpdateAddressRequest };
 use crate::errors::AppError;
 use crate::models::user::User as UserResponse;

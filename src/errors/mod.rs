@@ -11,14 +11,14 @@ pub enum AppError {
     #[display("Internal Server Error")] InternalServerError(String),
     #[display("Bad request")] BadRequest(String),
     #[display("Not found")] NotFound(String),
-    #[display("user not found")] UserNotFound,
+    // #[display("user not found")] UserNotFound,
     #[display("product not found")] DbError(String),
-    #[display("stripe error")] StripeError(String),
+    // #[display("stripe error")] StripeError(String),
     #[display("email error")] Email(String),
     #[display("Forbidden")] Forbidden(String),
     #[display("Address error")] AddressError(String),
     #[display("Nats error")] NatsError(String),
-    #[display("Serialization error")] SerializationError(String),
+    // #[display("Serialization error")] SerializationError(String),
 }
 
 impl std::error::Error for AppError {}
@@ -47,16 +47,16 @@ impl ResponseError for AppError {
                 ApiResponse::<()>::error(actix_web::http::StatusCode::BAD_REQUEST, message),
             AppError::NotFound(message) =>
                 ApiResponse::<()>::error(actix_web::http::StatusCode::NOT_FOUND, message),
-            AppError::UserNotFound =>
-                ApiResponse::<()>::error(actix_web::http::StatusCode::NOT_FOUND, "User not found"),
+            // AppError::UserNotFound =>
+            //     ApiResponse::<()>::error(actix_web::http::StatusCode::NOT_FOUND, "User not found"),
 
             AppError::DbError(message) =>
                 ApiResponse::<()>::error(actix_web::http::StatusCode::NOT_FOUND, message),
-            AppError::StripeError(message) =>
-                ApiResponse::<()>::error(
-                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    message
-                ),
+            // AppError::StripeError(message) =>
+            //     ApiResponse::<()>::error(
+            //         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            //         message
+            //     ),
             AppError::Email(message) =>
                 ApiResponse::<()>::error(
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -74,11 +74,11 @@ impl ResponseError for AppError {
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                     message
                 ),
-            AppError::SerializationError(message) =>
-                ApiResponse::<()>::error(
-                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    message
-                ),
+            // AppError::SerializationError(message) =>
+            //     ApiResponse::<()>::error(
+            //         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            //         message
+            //     ),
         }
     }
 }

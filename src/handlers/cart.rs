@@ -13,7 +13,7 @@ pub async fn add_to_cart(
     payload: web::Json<AddToCartRequest>
 ) -> Result<HttpResponse, AppError> {
     println!("1️⃣ Extracting quantity...");
-    let quantity_to_add = payload.quantity.unwrap_or(1);
+    let quantity_to_add = payload.quantity;
     if quantity_to_add < 1 || quantity_to_add > 10 {
         return Err(AppError::BadRequest("Quantity must be between 1 and 10".into()));
     }

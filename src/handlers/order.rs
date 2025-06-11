@@ -286,7 +286,7 @@ pub async fn create_order(
     };
 
     if let Err(err) = publish_order_email(&nats_client, payload).await {
-        log::error!("Failed to publish email task: {:?}", err);
+        return Err(AppError::Email(err.to_string()));
     }
 
     let order_response = OrderResponse {
