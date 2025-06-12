@@ -13,13 +13,13 @@ use crate::{
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web
-            ::scope("")
+            ::scope("/me")
             .wrap(jwt_auth::JwtMiddleware)
             .route("", web::post().to(create_address))
             .route("/{id}", web::get().to(get_address))
             .route("/{id}", web::put().to(update_address))
             .route("/{id}", web::delete().to(delete_address))
-            .route("/user/getall", web::get().to(get_user_addresses))
-            .route("/user/select/{address_id}", web::put().to(set_selected_address))
+            .route("/all", web::get().to(get_user_addresses))
+            .route("/select/{address_id}", web::put().to(set_selected_address))
     );
 }

@@ -379,7 +379,7 @@ pub async fn update_order_status(
             .bind(new_status)
             .bind(payment_status)
             .bind(&order_id)
-            .bind(& user_id)
+            .bind(&user_id)
     } else {
         sqlx::query(
             "UPDATE orders 

@@ -1,19 +1,17 @@
-use actix_web::{ web, HttpMessage, HttpRequest, HttpResponse };
+use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
 use crate::models::user::{ ChangeStatus, UpdateUserInput, User };
 use crate::{ errors::AppError };
 use crate::responses::ApiResponse;
-use crate::auth::jwt::Claims;
 
 pub async fn update_user_details(
     db: web::Data<PgPool>,
-    claims: web::ReqData<Claims>,
+    user: web::ReqData<User>,
     input: web::Json<UpdateUserInput>
 ) -> Result<HttpResponse, AppError> {
-    let user_id = &claims.sub;
     let user = sqlx
         ::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(user_id)
+        .bind(&user.id)
         .fetch_one(db.get_ref()).await
         .map_err(|e| { AppError::DbError(e.to_string()) })?;
 
@@ -30,7 +28,7 @@ pub async fn update_user_details(
         .bind(email)
         .bind(fullname)
         .bind(mobile)
-        .bind(user_id)
+        .bind(&user.id)
         .fetch_one(db.get_ref()).await
         .map_err(|e| { AppError::DbError(e.to_string()) })?;
 
@@ -61,28 +59,18 @@ pub async fn update_user_details(
 //     Ok(ApiResponse::ok("Password changed successfully", serde_json::json!(updated_user)))
 // }
 
-pub async fn get_current_user(
-    db: web::Data<PgPool>,
-    req: HttpRequest
-) -> Result<HttpResponse, AppError> {
-    let claims = req
-        .extensions()
-        .get::<Claims>()
-        .cloned()
-        .ok_or(AppError::Unauthorized("Missing token or claims".into()))?;
-
-    let user = sqlx
-        ::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(&claims.sub)
-        .fetch_one(db.get_ref()).await?;
-
-    Ok(ApiResponse::ok("User authenticated", serde_json::json!(user)))
+pub async fn get_current_user(user: Option<web::ReqData<User>>) -> Result<HttpResponse, AppError> {
+    match user {
+        Some(user_data) => {
+            let user = user_data.into_inner();
+            Ok(ApiResponse::ok("User fetched successfully", serde_json::json!(user)))
+        }
+        None => Err(AppError::Unauthorized("User not authenticated".to_string())),
+    }
 }
-
 pub async fn change_status(
     db: web::Data<PgPool>,
     input: web::Json<ChangeStatus>
-    // claims: web::ReqData<Claims>
 ) -> Result<HttpResponse, AppError> {
     let input = input.into_inner();
 

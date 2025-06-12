@@ -10,7 +10,7 @@ use config::Config;
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::{
-    auth::jwt::create_jwt,
+    utils::jwt::create_jwt,
     errors::AppError,
     models::auth::{ LoginInput, RegisterInput, User },
     utils::password::verify_password,

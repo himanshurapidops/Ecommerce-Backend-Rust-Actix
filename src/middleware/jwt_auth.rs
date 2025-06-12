@@ -71,7 +71,9 @@ impl<S, B> Service<ServiceRequest>
 
                     let config = Config::from_env();
 
-                    if let Ok(user) = crate::auth::jwt::decode_jwt(token, &config.jwt_secret) {
+                    if let Ok(user) = crate::utils::jwt::decode_jwt(token, &config.jwt_secret) {
+                    println!("JWT middleware called 2");
+
                         let user_info = sqlx
                             ::query_as::<_, User>(
                                 r#"
@@ -85,7 +87,8 @@ impl<S, B> Service<ServiceRequest>
                             .fetch_one(db.as_ref()).await
                             .map_err(|_| AppError::Unauthorized("User not found".into()))?;
 
-                        req.extensions_mut().insert(user_info);
+                        let x = req.extensions_mut().insert(user_info);
+                        println!("{:#?}", x);
                     }
 
                     return srv.call(req).await;

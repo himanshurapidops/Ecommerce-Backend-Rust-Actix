@@ -15,9 +15,6 @@ use config::Config;
 mod nats;
 use db::init_db;
 mod errors;
-mod auth {
-    pub mod jwt;
-}
 mod routes {
     pub mod auth;
     pub mod user;
@@ -28,25 +25,43 @@ mod routes {
 }
 mod utils {
     pub mod password;
+    pub mod jwt;
 }
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::Builder
         ::from_env(Env::default().default_filter_or("info,tokio_cron_scheduler=error"))
         .init();
 
-    let nats_client = async_nats::connect("nats://localhost:4222").await.unwrap();
-    let shared_nats = Arc::new(nats_client);
+    let nats_url = std::env
+        ::var("NATS_URL")
+        .unwrap_or_else(|_| "nats://localhost:4222".to_string());
 
+    log::info!("Attempting to connect to NATS at: {}", nats_url);
+
+    let nats_client = loop {
+        match async_nats::connect(&nats_url).await {
+            Ok(client) => {
+                log::info!("Successfully connected to NATS");
+                break client;
+            }
+            Err(e) => {
+                log::error!("Failed to connect to NATS: {}. Retrying in 5 seconds...", e);
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        }
+    };
+
+    let shared_nats = Arc::new(nats_client);
     let config = Config::from_env();
     let db_pool = init_db(&config).await;
-
     let pool = Arc::new(db_pool.clone());
 
     if let Err(e) = schedule_report_tasks(pool).await {
-        eprintln!(" Failed to schedule reports: {}", e);
+        eprintln!("Failed to schedule reports: {}", e);
     }
+
+    log::info!("Starting HTTP server on port {}", config.port);
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -57,7 +72,6 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(shared_nats.clone()))
-
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
             .service(
@@ -75,7 +89,7 @@ async fn main() -> std::io::Result<()> {
                     )
             )
     })
-        .bind(("127.0.0.1", config.port))?
+        .bind(("0.0.0.0", config.port))?
         .workers(1)
         .run().await
 }

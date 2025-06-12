@@ -18,7 +18,6 @@ pub enum AppError {
     #[display("Forbidden")] Forbidden(String),
     #[display("Address error")] AddressError(String),
     #[display("Nats error")] NatsError(String),
-    // #[display("Serialization error")] SerializationError(String),
 }
 
 impl std::error::Error for AppError {}

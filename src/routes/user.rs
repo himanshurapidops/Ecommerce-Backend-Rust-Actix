@@ -7,7 +7,7 @@ use crate::{
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web
-            ::scope("/you")
+            ::scope("/me")
             .wrap(JwtMiddleware)
             .route("/get", web::get().to(get_current_user))
             .route("/update", web::put().to(update_user_details))
@@ -15,9 +15,9 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 
     cfg.service(
         web
-            ::scope("/status")
+            ::scope("/admin")
             .wrap(AdminMiddleware)
             .wrap(JwtMiddleware)
-            .route("", web::put().to(change_status))
+            .route("/status", web::put().to(change_status))
     );
 }

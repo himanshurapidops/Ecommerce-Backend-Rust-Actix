@@ -25,7 +25,6 @@ thiserror = "2.0.12"
 validator = { version = "0.20", features = ["derive"] }
 anyhow = "1.0.98"
 derive_more = "2.0.1"
-
 lettre = { version = "0.11.17", features = [ "smtp-transport", "builder"] }
 bigdecimal = "0.4.8"
 tokio-cron-scheduler = "0.14.0"

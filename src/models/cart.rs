@@ -23,7 +23,7 @@ pub struct Product {
     pub is_available: bool,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize,Serialize, Validate)]
 pub struct AddToCartRequest {
     pub product_id: Uuid,
 
@@ -33,18 +33,4 @@ pub struct AddToCartRequest {
 }
 fn default_quantity() -> i64 {
     1
-}
-
-fn validate_quantity_opt(quantity: &Option<i64>) -> Result<(), ValidationError> {
-    if let Some(q) = quantity {
-        if *q > 0 && *q <= 100 {
-            Ok(())
-        } else {
-            let mut err = ValidationError::new("invalid_quantity");
-            err.message = Some("Quantity must be between 1 and 100".into());
-            Err(err)
-        }
-    } else {
-        Ok(())
-    }
 }

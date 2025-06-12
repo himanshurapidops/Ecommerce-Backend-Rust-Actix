@@ -1,11 +1,13 @@
-use actix_web::{ web, HttpResponse };
+use actix_web::{ web };
 
 use crate::{
     handlers::product::{
         create_product,
         delete_product,
         get_all_products,
+        get_all_products_admin,
         get_product_by_id,
+        product_status_update,
         update_product,
         update_product_stock,
     },
@@ -26,6 +28,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .wrap(AdminMiddleware)
             .wrap(JwtMiddleware)
             .service(web::resource("/create").route(web::post().to(create_product)))
+            .service(web::resource("/all").route(web::get().to(get_all_products_admin)))
+            .service(web::resource("/{id}/status").route(web::put().to(product_status_update)))
             .service(
                 web
                     ::resource("/{id}")

@@ -12,7 +12,13 @@ pub async fn get_all_products(db: web::Data<PgPool>) -> Result<HttpResponse, App
 
     Ok(ApiResponse::ok("All available products", products))
 }
+pub async fn get_all_products_admin(db: web::Data<PgPool>) -> Result<HttpResponse, AppError> {
+    let products = sqlx
+        ::query_as::<_, Product>("SELECT * FROM products")
+        .fetch_all(db.get_ref()).await?;
 
+    Ok(ApiResponse::ok("All available products", products))
+}
 pub async fn get_product_by_id(
     db: web::Data<PgPool>,
     product_id: web::Path<Uuid>
@@ -138,4 +144,26 @@ pub async fn create_product(
         })?;
 
     Ok(ApiResponse::ok("Product created", row))
+}
+
+pub async fn product_status_update(
+    db: web::Data<PgPool>,
+    product_id: web::Path<Uuid>
+) -> Result<HttpResponse, AppError> {
+    let product_id = product_id.into_inner();
+
+    let row = sqlx
+        ::query("UPDATE products SET is_available = NOT is_available WHERE id = $1")
+        .bind(product_id)
+        .execute(db.get_ref()).await
+        .map_err(|e| {
+            eprintln!("DB update error: {:?}", e);
+            AppError::DbError("Failed to update product status".into())
+        });
+
+    if row.is_err() {
+        return Err(AppError::NotFound("Product not found".into()));
+    }
+
+    Ok(ApiResponse::ok("Product status updated", ()))
 }

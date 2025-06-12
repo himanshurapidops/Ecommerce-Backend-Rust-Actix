@@ -7,11 +7,11 @@ use crate::{
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web
-            ::scope("")
+            ::scope("/me")
             .wrap(JwtMiddleware)
             .route("/add", web::post().to(add_to_cart))
             .route("", web::get().to(get_cart))
             .route("/{cartItemId}", web::delete().to(remove_from_cart))
-            .route("/", web::delete().to(clear_cart))
+            .route("", web::delete().to(clear_cart))
     );
 }

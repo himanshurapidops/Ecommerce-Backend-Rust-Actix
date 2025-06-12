@@ -12,19 +12,22 @@ pub async fn add_to_cart(
     user: web::ReqData<UserResponse>,
     payload: web::Json<AddToCartRequest>
 ) -> Result<HttpResponse, AppError> {
-    println!("1️⃣ Extracting quantity...");
+    let user = user.into_inner();
+    let product_id = payload.product_id;
     let quantity_to_add = payload.quantity;
+
+    // ✅ Step 1: Validate quantity
     if quantity_to_add < 1 || quantity_to_add > 10 {
         return Err(AppError::BadRequest("Quantity must be between 1 and 10".into()));
     }
 
-    println!("2️⃣ Fetching product...");
+    // ✅ Step 2: Fetch product and check availability
     let product = sqlx
         ::query_as::<_, Product>("SELECT * FROM products WHERE id = $1 AND is_available = true")
-        .bind(payload.product_id)
+        .bind(product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ DB error while fetching product: {:?}", e);
+            eprintln!("❌ Error fetching product: {:?}", e);
             AppError::DbError("Failed to fetch product".into())
         })?;
 
@@ -35,42 +38,39 @@ pub async fn add_to_cart(
         }
     };
 
-    println!("3️⃣ Checking if product already in cart...");
+    // ✅ Step 3: Check if product already in cart
     let existing_cart_item = sqlx
         ::query_as::<_, CartProduct>(
             "SELECT * FROM cart_products WHERE user_id = $1 AND product_id = $2"
         )
         .bind(user.id)
-        .bind(payload.product_id)
+        .bind(product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ DB error while checking cart: {:?}", e);
+            eprintln!("❌ Error checking existing cart item: {:?}", e);
             AppError::DbError("Failed to check cart".into())
         })?;
 
     if let Some(existing) = existing_cart_item {
-        println!("4️⃣ Product already in cart, updating quantity...");
-        let new_quantity = quantity_to_add;
-
-        if product.count_in_stock < new_quantity {
+        // ✅ Step 4: Update quantity
+        if product.count_in_stock < quantity_to_add {
             return Err(AppError::BadRequest("Insufficient stock for updated quantity".into()));
         }
 
         sqlx
             ::query("UPDATE cart_products SET quantity = $1 WHERE id = $2")
-            .bind(new_quantity)
+            .bind(quantity_to_add)
             .bind(existing.id)
             .execute(pool.get_ref()).await
             .map_err(|e| {
-                eprintln!("❌ DB error while updating cart item: {:?}", e);
-                AppError::DbError("Failed to update cart item".into())
+                eprintln!("❌ Error updating cart item: {:?}", e);
+                AppError::DbError("Failed to update cart".into())
             })?;
 
-        println!("✅ Cart updated.");
-        return Ok(ApiResponse::<()>::ok("Cart updated successfully", ()));
+        return Ok(ApiResponse::ok("Cart updated successfully", ()));
     }
 
-    println!("5️⃣ New item, inserting...");
+    // ✅ Step 5: Add new product to cart
     if product.count_in_stock < quantity_to_add {
         return Err(AppError::BadRequest("Insufficient stock".into()));
     }
@@ -82,18 +82,18 @@ pub async fn add_to_cart(
         )
         .bind(Uuid::new_v4())
         .bind(user.id)
-        .bind(payload.product_id)
+        .bind(product_id)
         .bind(quantity_to_add)
         .bind(Utc::now())
         .execute(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ DB error while inserting cart item: {:?}", e);
+            eprintln!("❌ Error inserting cart item: {:?}", e);
             AppError::DbError("Failed to add product to cart".into())
         })?;
 
-    println!("✅ New item added to cart.");
-    Ok(ApiResponse::<()>::ok("Product added to cart", ()))
+    Ok(ApiResponse::ok("Product added to cart", ()))
 }
+
 pub async fn get_cart(
     pool: web::Data<PgPool>,
     user: web::ReqData<UserResponse>
@@ -115,6 +115,7 @@ pub async fn remove_from_cart(
     user: web::ReqData<UserResponse>,
     cart_item_id: web::Path<Uuid>
 ) -> Result<HttpResponse, AppError> {
+    println!("remove_from_cart");
     let cart_item_id = cart_item_id.into_inner();
 
     let result = sqlx
