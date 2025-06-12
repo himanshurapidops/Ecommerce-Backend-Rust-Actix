@@ -10,6 +10,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://root@cockroach:26257/mydb?sslmode=disable
       - NATS_URL=nats://nats:4222
+    env_file:
+      - .env
     depends_on:
       - cockroach
       - nats
@@ -22,6 +24,8 @@ services:
       - "5000:5000"
     environment:
       - NATS_URL=nats://nats:4222
+    env_file:
+      - ./tempserver/.env
     depends_on:
       - nats
 
@@ -30,7 +34,7 @@ services:
     command: start-single-node --insecure
     ports:
       - "26257:26257" # SQL
-      - "8080:8080"   # Admin UI
+      - "8080:8080" # Admin UI
     volumes:
       - cockroach-data:/cockroach/cockroach-data
 

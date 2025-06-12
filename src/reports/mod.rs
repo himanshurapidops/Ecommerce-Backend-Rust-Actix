@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use chrono::{ NaiveDateTime, Utc, Duration };
+use lettre::message::header::ContentType;
+use lettre::message::SinglePart;
 use lettre::{ Message, SmtpTransport, Transport };
 use lettre::transport::smtp::authentication::Credentials;
 use serde::Serialize;
@@ -9,36 +11,53 @@ use tokio_cron_scheduler::{ Job, JobScheduler };
 use crate::config::Config;
 
 #[derive(Debug, Serialize, FromRow)]
-pub struct SalesReport {
-    pub total_orders: i64,
+pub struct ProductSalesReport {
+    pub product_name: String,
+    pub units_sold: f64,
+    pub revenue_per_product: f64,
     pub total_revenue: f64,
 }
 
-pub async fn generate_report(
+pub async fn generate_product_sales_report(
     pool: &PgPool,
     start_date: NaiveDateTime,
     end_date: NaiveDateTime
-) -> Result<SalesReport, sqlx::Error> {
-    let row = sqlx
-        ::query_as::<_, SalesReport>(
+) -> Result<Vec<ProductSalesReport>, sqlx::Error> {
+    let rows = sqlx
+        ::query_as::<_, ProductSalesReport>(
             r#"
-                SELECT
-                    COUNT(*) AS total_orders,
-                    COALESCE(SUM(total_amount)::FLOAT8, 0) AS total_revenue
-                FROM orders
-                WHERE created_at >= $1 AND created_at < $2
-            "#
+        SELECT
+            p.name AS product_name,
+            SUM(CAST(oi.quantity AS FLOAT8)) AS units_sold,
+            SUM(CAST(oi.quantity AS FLOAT8) * p.price) AS revenue_per_product,
+            (SELECT COALESCE(SUM(total_amount)::FLOAT8, 0)
+             FROM orders
+             WHERE created_at >= $1 AND created_at < $2) AS total_revenue
+        FROM
+            order_items oi
+        JOIN
+            orders o ON oi.order_id = o.id
+        JOIN
+            products p ON oi.product_id = p.id
+        WHERE
+            o.created_at >= $1 AND o.created_at < $2
+        GROUP BY
+            p.name
+        ORDER BY
+            revenue_per_product DESC
+        "#
         )
         .bind(start_date)
         .bind(end_date)
-        .fetch_one(pool).await?;
-    Ok(row)
+        .fetch_all(pool).await?;
+
+    Ok(rows)
 }
 
 pub fn get_date_range(period: &str) -> (NaiveDateTime, NaiveDateTime) {
     let now = Utc::now().naive_utc();
     match period {
-        // "minutely" => (now - Duration::minutes(1), now),
+        "minutely" => (now - Duration::days(7), now),
         "daily" => {
             let start_date = now.date().and_hms_opt(0, 0, 0).unwrap();
             (start_date, now)
@@ -50,18 +69,101 @@ pub fn get_date_range(period: &str) -> (NaiveDateTime, NaiveDateTime) {
     }
 }
 
-pub async fn send_email(report: &SalesReport) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn send_email(
+    report: &[ProductSalesReport],
+    period: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    let summary = report
+        .iter()
+        .map(|r| {
+            format!(
+                "Product: {}
+  - Units Sold: {}
+  - Revenue: $ {:.2}\n",
+                r.product_name,
+                r.units_sold,
+                r.revenue_per_product
+            )
+        })
+        .collect::<String>();
+
+    let total_revenue = report
+        .first()
+        .map(|r| r.total_revenue)
+        .unwrap_or(0.0);
+    let html_body = format!(
+        r#"
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f9f9f9;
+                padding: 20px;
+                color: #333;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: auto;
+                background-color: #fff;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }}
+            .header {{
+                text-align: center;
+                font-size: 24px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 20px;
+            }}
+            .product {{
+                margin-bottom: 15px;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 10px;
+            }}
+            .total {{
+                font-size: 18px;
+                font-weight: bold;
+                color: #27ae60;
+                margin-top: 30px;
+                text-align: right;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">{period_upper} Sales Report</div>
+            {report_rows}
+            <div class="total">Total Revenue: $ {total_revenue:.2}</div>
+        </div>
+    </body>
+    </html>
+    "#,
+        period_upper = period.to_uppercase(),
+        report_rows = report
+            .iter()
+            .map(|r|
+                format!(
+                    r#"<div class="product">
+                <strong>{}</strong><br/>
+                Units Sold: {}<br/>
+                Revenue: ₹ {:.2}
+           </div>"#,
+                    r.product_name,
+                    r.units_sold,
+                    r.revenue_per_product
+                )
+            )
+            .collect::<String>(),
+        total_revenue = total_revenue
+    );
+
     let email = Message::builder()
         .from(Config::from_env().email_from.parse()?)
         .to(Config::from_env().email_to.parse()?)
-        .subject("Sales Report")
-        .body(
-            format!(
-                "Sales Report:\n- Total Orders: {}\n- Total Revenue: ₹ {:.2}",
-                report.total_orders,
-                report.total_revenue
-            )
-        )?;
+        .subject(format!("{} Sales Report", period.to_uppercase()))
+        .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html_body))?;
 
     let creds = Credentials::new(
         Config::from_env().smtp_username,
@@ -75,17 +177,15 @@ pub async fn send_email(report: &SalesReport) -> Result<(), Box<dyn std::error::
 
 pub async fn schedule_report_tasks(pool: Arc<PgPool>) -> anyhow::Result<()> {
     let sched = JobScheduler::new().await?;
-    // let periods = vec!["minutely", "daily", "weekly", "monthly", "yearly"];
-    let periods = vec!["daily", "weekly", "monthly", "yearly"];
+    let periods = vec!["minutely", "daily", "weekly", "monthly", "yearly"];
 
     for period in periods {
-        // Fixed cron expressions - format: "sec min hour day month dayofweek" (6 fields)
         let job_expr = match period {
-            // "minutely" => "0 * * * * *",
-            "daily" => "0 0 8 * * *", // 08:00:00 every day
-            "weekly" => "0 0 8 * * 1", // 08:00:00 every Monday (1 = Monday)
-            "monthly" => "0 0 8 1 * *", // 08:00:00 on 1st of each month
-            "yearly" => "0 0 8 1 1 *", // 08:00:00 on 1st Jan every year
+            "minutely" => "0 * * * * *",
+            "daily" => "0 0 8 * * *",
+            "weekly" => "0 0 8 * * 1",
+            "monthly" => "0 0 8 1 * *",
+            "yearly" => "0 0 8 1 1 *",
             _ => {
                 continue;
             }
@@ -99,9 +199,9 @@ pub async fn schedule_report_tasks(pool: Arc<PgPool>) -> anyhow::Result<()> {
             let period = period_name.clone();
             Box::pin(async move {
                 let (start, end) = get_date_range(&period);
-                match generate_report(&pool, start, end).await {
+                match generate_product_sales_report(&pool, start, end).await {
                     Ok(report) => {
-                        if let Err(e) = send_email(&report).await {
+                        if let Err(e) = send_email(&report, &period).await {
                             eprintln!("Failed to send {} email: {:?}", period, e);
                         } else {
                             println!("✅ {} report email sent!", period);

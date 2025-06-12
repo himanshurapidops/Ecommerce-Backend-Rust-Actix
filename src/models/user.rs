@@ -37,6 +37,22 @@ pub struct UpdateUserInput {
     pub mobile: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct ChangeStatus {
+    #[validate(custom(function = "validate_status"))]
+    pub status: Option<String>,
+    pub user_id: Uuid,
+
+}
+
+fn validate_status(status: &String) -> Result<(), ValidationError> {
+    if status == "Active" || status == "Inactive" {
+        Ok(())
+    } else {
+        Err(ValidationError::new("invalid_status"))
+    }
+}
+
 fn validate_mobile_opt(mobile: &String) -> Result<(), ValidationError> {
     let re = Regex::new(r"^[6-9]\d{9}$").unwrap();
     if re.is_match(mobile) {

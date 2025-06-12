@@ -1,6 +1,6 @@
 use actix_web::{ web, HttpMessage, HttpRequest, HttpResponse };
 use sqlx::PgPool;
-use crate::models::user::{ UpdateUserInput, User };
+use crate::models::user::{ ChangeStatus, UpdateUserInput, User };
 use crate::{ errors::AppError };
 use crate::responses::ApiResponse;
 use crate::auth::jwt::Claims;
@@ -77,4 +77,22 @@ pub async fn get_current_user(
         .fetch_one(db.get_ref()).await?;
 
     Ok(ApiResponse::ok("User authenticated", serde_json::json!(user)))
+}
+
+pub async fn change_status(
+    db: web::Data<PgPool>,
+    input: web::Json<ChangeStatus>
+    // claims: web::ReqData<Claims>
+) -> Result<HttpResponse, AppError> {
+    let input = input.into_inner();
+
+    let status = input.status;
+
+    let updated_user = sqlx
+        ::query_as::<_, User>("UPDATE users SET status = $1 WHERE id = $2 RETURNING *")
+        .bind(status)
+        .bind(&input.user_id)
+        .fetch_one(db.get_ref()).await?;
+
+    Ok(ApiResponse::ok("User status changed successfully", serde_json::json!(updated_user)))
 }
