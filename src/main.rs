@@ -14,6 +14,7 @@ use env_logger::Env;
 use config::Config;
 mod nats;
 use db::init_db;
+use sqlx::migrate::Migrator;
 mod errors;
 mod routes {
     pub mod auth;

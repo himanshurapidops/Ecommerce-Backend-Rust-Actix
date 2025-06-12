@@ -5,7 +5,7 @@ services:
     image: cockroachdb/cockroach:v24.1.0
     command: start-single-node --insecure
     ports:
-      - "26257:26257" # SQL
+      - "26257:26257" # SQL port
       - "8080:8080" # Admin UI
     volumes:
       - cockroach-data:/cockroach/cockroach-data
@@ -15,11 +15,21 @@ services:
       timeout: 5s
       retries: 5
 
+  db-init:
+    image: cockroachdb/cockroach:v24.1.0
+    depends_on:
+      - cockroach
+    volumes:
+      - ./migrations:/migrations
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "sleep 5 && cockroach sql --insecure --host=cockroach < /migrations/20250612194646_create_all_tables.sql"
+
   nats:
     image: nats:2.10
     ports:
-      - "4222:4222" # client
-      - "8222:8222" # monitoring
+      - "4222:4222"
+      - "8222:8222"
     command: ["-js", "-m", "8222"]
     healthcheck:
       test:
@@ -42,13 +52,14 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - DATABASE_URL=postgresql://root@cockroach:26257/mydb?sslmode=disable
+      - DATABASE_URL=postgresql://root@cockroach:26257/ecommerce?sslmode=disable
       - NATS_URL=nats://nats:4222
     env_file:
       - .env
     depends_on:
       - cockroach
       - nats
+      - db-init
     restart: unless-stopped
 
   email-service:

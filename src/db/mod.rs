@@ -1,4 +1,4 @@
-use sqlx::{ PgPool, postgres::PgPoolOptions };
+use sqlx::{ postgres::PgPoolOptions, PgPool };
 use crate::config::{ Config };
 
 pub async fn init_db(config: &Config) -> PgPool {
@@ -7,4 +7,3 @@ pub async fn init_db(config: &Config) -> PgPool {
         .connect(&config.database_url).await
         .expect("Failed to connect to the database")
 }
-

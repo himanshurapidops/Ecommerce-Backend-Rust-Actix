@@ -1,6 +1,6 @@
 use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
-use validator::{ Validate };
+use validator::{ Validate, ValidateRequired };
 use crate::models::user::{ ChangeStatus, UpdateUserInput, User };
 use crate::{ errors::AppError };
 use crate::responses::ApiResponse;
