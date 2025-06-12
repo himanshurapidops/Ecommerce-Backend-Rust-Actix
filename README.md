@@ -9,7 +9,7 @@
 
 </div>
 
-This repository contains the backend implementation of an e-commerce application built using Rust and the Actix Web framework. It provides a RESTful API for managing products, users, carts, orders, and addresses, with JWT authentication and PostgreSQL as the database.
+This repository contains the backend implementation of an e-commerce application built using Rust and the Actix Web framework. It provides a RESTful API for managing products, users, carts, orders, and addresses, with JWT authentication and Cockroach as the database.
 
 
 ```
