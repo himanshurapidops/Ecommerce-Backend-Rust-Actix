@@ -1,6 +1,7 @@
 use actix_web::{ HttpResponse, web, Result };
 use sqlx::PgPool;
 use uuid::Uuid;
+use validator::Validate;
 use crate::models::address::{ Address, CreateAddressRequest, UpdateAddressRequest };
 use crate::errors::AppError;
 use crate::models::user::User as UserResponse;
@@ -11,6 +12,8 @@ pub async fn create_address(
     user: web::ReqData<UserResponse>,
     req: web::Json<CreateAddressRequest>
 ) -> Result<HttpResponse, AppError> {
+    req.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let req = req.into_inner();
 
     match
@@ -75,9 +78,10 @@ pub async fn get_user_addresses(
 pub async fn update_address(
     pool: web::Data<PgPool>,
     path: web::Path<Uuid>,
-
     req: web::Json<UpdateAddressRequest>
 ) -> Result<HttpResponse, AppError> {
+    req.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let id = path.into_inner();
     let req = req.into_inner();
 
@@ -134,12 +138,6 @@ pub async fn set_selected_address(
     let address_id = path.into_inner();
 
     let mut tx = match pool.begin().await {
-        // Ok(tx) => tx,
-        // Err(e) => {
-        //     eprintln!("Error starting transaction: {}", e);
-        //     return Ok(HttpResponse::InternalServerError().json("Failed to start transaction"));
-        // }
-
         Ok(tx) => tx,
         Err(e) => {
             return Err(AppError::AddressError(e.to_string()));

@@ -1,5 +1,6 @@
 use actix_web::{ web, HttpResponse, Responder };
 use chrono::Utc;
+use validator::Validate;
 use crate::models::cart::{ CartProduct, Product, AddToCartRequest };
 use crate::models::user::User as UserResponse;
 use sqlx::PgPool;
@@ -12,22 +13,22 @@ pub async fn add_to_cart(
     user: web::ReqData<UserResponse>,
     payload: web::Json<AddToCartRequest>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| { AppError::ValidationError(e.to_string()) })?;
+
     let user = user.into_inner();
     let product_id = payload.product_id;
     let quantity_to_add = payload.quantity;
 
-    // ✅ Step 1: Validate quantity
     if quantity_to_add < 1 || quantity_to_add > 10 {
         return Err(AppError::BadRequest("Quantity must be between 1 and 10".into()));
     }
 
-    // ✅ Step 2: Fetch product and check availability
     let product = sqlx
         ::query_as::<_, Product>("SELECT * FROM products WHERE id = $1 AND is_available = true")
         .bind(product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ Error fetching product: {:?}", e);
+            eprintln!(" Error fetching product: {:?}", e);
             AppError::DbError("Failed to fetch product".into())
         })?;
 
@@ -38,7 +39,6 @@ pub async fn add_to_cart(
         }
     };
 
-    // ✅ Step 3: Check if product already in cart
     let existing_cart_item = sqlx
         ::query_as::<_, CartProduct>(
             "SELECT * FROM cart_products WHERE user_id = $1 AND product_id = $2"
@@ -47,12 +47,11 @@ pub async fn add_to_cart(
         .bind(product_id)
         .fetch_optional(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ Error checking existing cart item: {:?}", e);
+            eprintln!(" Error checking existing cart item: {:?}", e);
             AppError::DbError("Failed to check cart".into())
         })?;
 
     if let Some(existing) = existing_cart_item {
-        // ✅ Step 4: Update quantity
         if product.count_in_stock < quantity_to_add {
             return Err(AppError::BadRequest("Insufficient stock for updated quantity".into()));
         }
@@ -63,14 +62,13 @@ pub async fn add_to_cart(
             .bind(existing.id)
             .execute(pool.get_ref()).await
             .map_err(|e| {
-                eprintln!("❌ Error updating cart item: {:?}", e);
+                eprintln!("Error updating cart item: {:?}", e);
                 AppError::DbError("Failed to update cart".into())
             })?;
 
         return Ok(ApiResponse::ok("Cart updated successfully", ()));
     }
 
-    // ✅ Step 5: Add new product to cart
     if product.count_in_stock < quantity_to_add {
         return Err(AppError::BadRequest("Insufficient stock".into()));
     }
@@ -87,7 +85,7 @@ pub async fn add_to_cart(
         .bind(Utc::now())
         .execute(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ Error inserting cart item: {:?}", e);
+            eprintln!(" Error inserting cart item: {:?}", e);
             AppError::DbError("Failed to add product to cart".into())
         })?;
 
@@ -139,7 +137,7 @@ pub async fn clear_cart(
         .bind(user.id)
         .execute(pool.get_ref()).await
         .map_err(|e| {
-            eprintln!("❌ DB error while clearing cart: {:?}", e);
+            eprintln!(" DB error while clearing cart: {:?}", e);
             AppError::DbError("Failed to clear cart".into())
         });
 

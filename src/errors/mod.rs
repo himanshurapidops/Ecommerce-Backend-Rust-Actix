@@ -18,6 +18,7 @@ pub enum AppError {
     #[display("Forbidden")] Forbidden(String),
     #[display("Address error")] AddressError(String),
     #[display("Nats error")] NatsError(String),
+    #[display("Validation error")] ValidationError(String),
 }
 
 impl std::error::Error for AppError {}
@@ -78,6 +79,12 @@ impl ResponseError for AppError {
             //         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             //         message
             //     ),
+
+            AppError::ValidationError(message) =>
+                ApiResponse::<()>::error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    message
+                ),
         }
     }
 }

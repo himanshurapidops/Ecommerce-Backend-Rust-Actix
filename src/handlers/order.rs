@@ -2,6 +2,7 @@ use actix_web::{ web, HttpResponse };
 use sqlx::{ PgPool, Postgres, Row, Transaction };
 use uuid::Uuid;
 use async_nats::Client;
+use validator::Validate;
 use std::sync::Arc;
 
 use crate::{
@@ -48,7 +49,6 @@ pub async fn create_order(
         return Err(AppError::BadRequest("Address does not belong to user".into()));
     }
 
-    // Fetch cart items with product info
     let cart_items = match
         sqlx
             ::query(
@@ -70,7 +70,6 @@ pub async fn create_order(
         }
     };
 
-    // Check stock for each item and calculate total amount
     let mut total_amount: f64 = 0.0;
 
     for item in &cart_items {
@@ -101,14 +100,12 @@ pub async fn create_order(
         };
 
         if count_in_stock <= 10 {
-            // Send email
             if let Err(e) = send_low_stock_email(&name, count_in_stock).await {
                 eprintln!("Failed to send low stock email: {}", e);
             }
         }
 
         if count_in_stock < quantity {
-            // Send email
             if let Err(e) = send_low_stock_email(&name, count_in_stock).await {
                 eprintln!("Failed to send low stock email: {}", e);
             }
@@ -118,10 +115,8 @@ pub async fn create_order(
         total_amount += price * (quantity as f64);
     }
 
-    // Create order id with better format
     let order_id = format!("ORD-{}", Uuid::new_v4().simple());
 
-    // Start DB transaction
     let mut tx: Transaction<'_, Postgres> = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
@@ -129,7 +124,6 @@ pub async fn create_order(
         }
     };
 
-    // Insert order
     let order_row = match
         sqlx
             ::query(
@@ -158,7 +152,6 @@ pub async fn create_order(
         }
     };
 
-    // Get generated order id
     let new_order_id: Uuid = match order_row.try_get("id") {
         Ok(id) => id,
         Err(e) => {
@@ -170,7 +163,6 @@ pub async fn create_order(
         }
     };
 
-    // Insert order products
     for item in &cart_items {
         let product_id: Uuid = match item.try_get("product_id") {
             Ok(id) => id,
@@ -226,7 +218,6 @@ pub async fn create_order(
         }
     }
 
-    // Update product stock
     for item in &cart_items {
         let product_id: Uuid = item.try_get("product_id").unwrap(); // Safe since we validated above
         let quantity: i64 = item.try_get("quantity").unwrap(); // Safe since we validated above
@@ -246,7 +237,6 @@ pub async fn create_order(
         }
     }
 
-    // Clear cart
     if
         let Err(e) = sqlx
             ::query("DELETE FROM cart_products WHERE user_id = $1")
@@ -260,7 +250,6 @@ pub async fn create_order(
         return Err(AppError::DbError(e.to_string()));
     }
 
-    // Commit transaction
     if let Err(e) = tx.commit().await {
         eprintln!("Failed to commit transaction: {}", e);
         return Err(AppError::DbError(e.to_string()));
@@ -289,6 +278,8 @@ pub async fn update_order_status(
     path: web::Path<String>,
     payload: web::Json<UpdateOrderStatusRequest>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let order_id = path.into_inner();
     let user_id = payload.user_id;
     let new_status = &payload.order_status;
@@ -306,7 +297,6 @@ pub async fn update_order_status(
         );
     }
 
-    // Validate payment status if provided
     if let Some(payment_status) = payment_status {
         let valid_payment_statuses = ["Pending", "Completed", "Failed", "Refunded"];
         if !valid_payment_statuses.contains(&payment_status.as_str()) {
@@ -321,7 +311,6 @@ pub async fn update_order_status(
         }
     }
 
-    // Check if order exists and belongs to user
     let order_exists = match
         sqlx
             ::query("SELECT EXISTS(SELECT 1 FROM orders WHERE order_id = $1 AND user_id = $2)")
@@ -339,7 +328,6 @@ pub async fn update_order_status(
         return Err(AppError::NotFound("Order not found".to_string()));
     }
 
-    // Get current order status to validate transitions
     let current_order = match
         sqlx
             ::query(
@@ -364,7 +352,6 @@ pub async fn update_order_status(
         }
     };
 
-    // Validate status transitions (prevent invalid transitions)
     if !is_valid_status_transition(&current_status, new_status) {
         return Err(AppError::BadRequest("Invalid status transition".to_string()));
     }
@@ -427,7 +414,6 @@ fn is_valid_status_transition(current: &str, new: &str) -> bool {
     }
 }
 
-// Helper function to restore product stock when order is cancelled
 async fn restore_product_stock(pool: &PgPool, order_id: &str) -> Result<HttpResponse, AppError> {
     let order_products = sqlx
         ::query(
@@ -482,7 +468,6 @@ pub async fn get_user_orders(
             }
         };
 
-        // Get order items for this order
         let items_query = sqlx
             ::query(
                 "SELECT oi.product_id, oi.quantity, oi.price_at_order_time, p.name as product_name

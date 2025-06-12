@@ -9,6 +9,7 @@ use actix_web::{ web, HttpResponse };
 use config::Config;
 use sqlx::PgPool;
 use uuid::Uuid;
+use validator::Validate;
 use crate::{
     utils::jwt::create_jwt,
     errors::AppError,
@@ -22,6 +23,8 @@ pub async fn register(
     payload: web::Json<RegisterInput>,
     nats_client: web::Data<Arc<Client>>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let exists = sqlx
         ::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
         .bind(&payload.email)
@@ -74,6 +77,8 @@ pub async fn login(
     db: web::Data<PgPool>,
     payload: web::Json<LoginInput>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let user = sqlx
         ::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
         .bind(&payload.email)

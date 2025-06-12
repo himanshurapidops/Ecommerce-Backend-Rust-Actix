@@ -1,5 +1,6 @@
 use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
+use validator::Validate;
 use crate::errors::AppError;
 use crate::models::product::{ CreateProductInput, UpdateStock, Product };
 use crate::responses::ApiResponse;
@@ -40,6 +41,8 @@ pub async fn update_product(
     product_id: web::Path<Uuid>,
     payload: web::Json<CreateProductInput>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let row = sqlx
         ::query_as::<_, Product>(
             r#"
@@ -92,7 +95,8 @@ pub async fn update_product_stock(
     path: web::Path<Uuid>,
     payload: web::Json<UpdateStock>
 ) -> Result<HttpResponse, AppError> {
-    println!("update_product_stock: {}", path);
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let stock = payload.count_in_stock;
 
     if stock < 0 {
@@ -116,6 +120,8 @@ pub async fn create_product(
     db: web::Data<PgPool>,
     payload: web::Json<CreateProductInput>
 ) -> Result<HttpResponse, AppError> {
+    payload.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let input = payload.into_inner();
 
     let row = sqlx

@@ -1,5 +1,6 @@
 use actix_web::{ web, HttpResponse };
 use sqlx::PgPool;
+use validator::{ Validate };
 use crate::models::user::{ ChangeStatus, UpdateUserInput, User };
 use crate::{ errors::AppError };
 use crate::responses::ApiResponse;
@@ -9,6 +10,7 @@ pub async fn update_user_details(
     user: web::ReqData<User>,
     input: web::Json<UpdateUserInput>
 ) -> Result<HttpResponse, AppError> {
+    input.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
     let user = sqlx
         ::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
         .bind(&user.id)
@@ -72,6 +74,8 @@ pub async fn change_status(
     db: web::Data<PgPool>,
     input: web::Json<ChangeStatus>
 ) -> Result<HttpResponse, AppError> {
+    input.validate().map_err(|e| AppError::ValidationError(e.to_string()))?;
+
     let input = input.into_inner();
 
     let status = input.status;
