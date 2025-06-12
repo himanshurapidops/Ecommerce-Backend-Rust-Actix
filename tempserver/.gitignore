@@ -1,0 +1,37 @@
+# Rust build artifacts
+/target/
+/tempserver/target/
+/**/*.rs.bk
+
+# Cargo generated files
+**/Cargo.lock
+
+# If you want to ignore Cargo.lock for libraries, remove this line
+# For binaries, it is recommended to commit Cargo.lock
+
+# Environment variables file
+.env
+.env.*
+
+# VS Code settings
+.vscode/
+
+# IntelliJ IDEA / JetBrains IDEs
+.idea/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# MacOS files
+.DS_Store
+
+# Backup files
+*~
+*.swp
+*.swo
+
+# System files
+Thumbs.db
+
+# Actix Web specific (usually none, but you might add if you generate files)
