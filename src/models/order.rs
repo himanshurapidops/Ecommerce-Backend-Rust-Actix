@@ -21,6 +21,8 @@ pub struct UpdateOrderStatusRequest {
 
     #[validate(custom(function = "validate_payment_status_opt"))]
     pub payment_status: Option<String>,
+
+    pub user_id: Uuid,
 }
 
 #[derive(Debug, Serialize)]

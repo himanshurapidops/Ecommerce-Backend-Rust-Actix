@@ -9,8 +9,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web
             ::scope("/user")
             .wrap(JwtMiddleware)
-            .service(web::resource("").route(web::post().to(create_order)))
-            .service(web::resource("/user").route(web::get().to(get_user_orders)))
+            .service(web::resource("/create").route(web::post().to(create_order)))
+            .service(web::resource("/all").route(web::get().to(get_user_orders)))
     );
 
     cfg.service(

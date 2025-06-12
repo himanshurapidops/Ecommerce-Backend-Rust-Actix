@@ -40,6 +40,11 @@ pub struct User {
     pub role: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserEmail {
+    pub email: String,
+}
+
 fn validate_mobile(mobile: &str) -> Result<(), ValidationError> {
     let re = Regex::new(r"^[6-9]\d{9}$").unwrap();
     if re.is_match(mobile) {

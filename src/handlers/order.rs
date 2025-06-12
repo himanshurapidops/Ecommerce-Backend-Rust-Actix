@@ -36,7 +36,7 @@ pub async fn create_order(
             .bind(address_id)
             .bind(&user.id)
             .fetch_one(pool.get_ref()).await
-            .map_err(|e| AppError::DbError(e.to_string()))
+            .map_err(|e| AppError::NotFound("Address not found".into()))
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
         Err(e) => {
@@ -266,19 +266,6 @@ pub async fn create_order(
         return Err(AppError::DbError(e.to_string()));
     }
 
-    // Send order confirmation email
-    // if
-    //     let Err(e) = send_order_confirmation_email(
-    //         &order_id,
-    //         &user_id,
-    //         &address_id,
-    //         &total_amount
-    //     ).await
-    // {
-    //     eprintln!("Failed to send order confirmation email: {}", e);
-    //     return Err(AppError::Email(e.to_string()));
-    // }
-
     let payload = EmailPayloadOrder {
         email: user.email.clone(),
         order_id: order_id.clone(),
@@ -300,11 +287,10 @@ pub async fn create_order(
 pub async fn update_order_status(
     pool: web::Data<PgPool>,
     path: web::Path<String>,
-    user: web::ReqData<UserResponse>,
     payload: web::Json<UpdateOrderStatusRequest>
 ) -> Result<HttpResponse, AppError> {
     let order_id = path.into_inner();
-
+    let user_id = payload.user_id;
     let new_status = &payload.order_status;
     let payment_status = &payload.payment_status;
 
@@ -340,7 +326,7 @@ pub async fn update_order_status(
         sqlx
             ::query("SELECT EXISTS(SELECT 1 FROM orders WHERE order_id = $1 AND user_id = $2)")
             .bind(&order_id)
-            .bind(user.id)
+            .bind(&user_id)
             .fetch_one(pool.get_ref()).await
     {
         Ok(row) => row.try_get::<bool, _>(0).unwrap_or(false),
@@ -360,7 +346,7 @@ pub async fn update_order_status(
                 "SELECT order_status, payment_status FROM orders WHERE order_id = $1 AND user_id = $2"
             )
             .bind(&order_id)
-            .bind(user.id)
+            .bind(&user_id)
             .fetch_one(pool.get_ref()).await
     {
         Ok(row) => row,
@@ -393,7 +379,7 @@ pub async fn update_order_status(
             .bind(new_status)
             .bind(payment_status)
             .bind(&order_id)
-            .bind(user.id)
+            .bind(& user_id)
     } else {
         sqlx::query(
             "UPDATE orders 
@@ -402,7 +388,7 @@ pub async fn update_order_status(
         )
             .bind(new_status)
             .bind(&order_id)
-            .bind(user.id)
+            .bind(&user_id)
     };
 
     match update_query.execute(pool.get_ref()).await {
